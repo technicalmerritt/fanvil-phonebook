@@ -1,0 +1,25 @@
+# Runs the Syncro <-> Dojo bridge.
+#
+# Put your real values in a file called .env next to this file (copy .env.example).
+# That file must NEVER be committed to git or published in the image.
+#
+# On TrueNAS, you can instead enter the same values in the app's Environment
+# Variables fields and skip the env_file line.
+
+services:
+  bridge:
+    # Replace OWNER with your GitHub username (lower case) once the image is published.
+    image: ghcr.io/OWNER/syncro-dojo-bridge:latest
+    restart: unless-stopped
+    ports:
+      - "8787:8787"
+    env_file:
+      - .env
+    environment:
+      # Fixed inside the container, so these override anything in .env.
+      HOST: "0.0.0.0"
+      PORT: "8787"
+      LEDGER_PATH: "/data/ledger.jsonl"
+    volumes:
+      # Keeps the audit log safe across restarts and updates.
+      - ./data:/data
