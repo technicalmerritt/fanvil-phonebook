@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bridge Setup</title>
+<style>
+  :root {
+    --bg: #0f1115; --panel: #181b22; --panel-2: #21252e; --line: #2d323d;
+    --text: #eef1f6; --muted: #9aa3b2; --accent: #2f7d4f; --radius: 14px;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text); padding: 24px 16px;
+    font: 16px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  .wrap { max-width: 720px; margin: 0 auto; }
+  h1 { font-size: 1.3rem; margin: 0 0 20px; }
+  h2 { font-size: 1rem; margin: 0 0 10px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 18px; margin-bottom: 16px; }
+  .muted { color: var(--muted); font-size: .9rem; }
+  input {
+    width: 100%; padding: 12px 13px; background: var(--panel-2); color: var(--text);
+    border: 1px solid var(--line); border-radius: 10px; font: inherit;
+  }
+  button {
+    font: inherit; font-weight: 600; cursor: pointer; border-radius: 10px;
+    border: 1px solid var(--line); background: var(--panel-2); color: var(--text); padding: 11px 15px;
+  }
+  .bookmarklet {
+    display: inline-block; background: var(--accent); color: #fff; font-weight: 700;
+    padding: 14px 22px; border-radius: 10px; text-decoration: none; font-size: 1.05rem;
+    cursor: grab;
+  }
+  table { width: 100%; border-collapse: collapse; font-size: .92rem; }
+  th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; font-size: .82rem; }
+  code { background: var(--panel-2); padding: 2px 6px; border-radius: 5px; font-size: .88em; }
+  .pill { font-size: .78rem; padding: 2px 9px; border-radius: 999px; border: 1px solid var(--line); }
+  .pill.ok { color: #8fd3a3; border-color: #2f6b43; }
+  .pill.bad { color: #e3a39b; border-color: #6e3630; }
+  ol { padding-left: 22px; }
+  li { margin-bottom: 8px; }
+  .hidden { display: none; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Syncro &harr; Dojo bridge &mdash; setup</h1>
+
+  <section class="card">
+    <h2>1. Connection check</h2>
+    <div class="muted" style="margin-bottom:12px">Confirms the bridge can actually talk to both systems with the keys in your <code>.env</code>.</div>
+    <div class="muted">Bridge token</div>
+    <div style="display:flex; gap:10px; margin:6px 0 12px">
+      <input id="token" type="password" placeholder="value of BRIDGE_TOKEN" autocomplete="off">
+      <button id="check" style="flex:0 0 auto">Check</button>
+    </div>
+    <table id="healthTable" class="hidden">
+      <tbody>
+        <tr><th>Syncro API</th><td id="hSyncro"></td></tr>
+        <tr><th>Dojo API</th><td id="hDojo"></td></tr>
+        <tr><th>Card machines seen</th><td id="hTerminals"></td></tr>
+        <tr><th>Mode</th><td id="hMode"></td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section class="card">
+    <h2>2. The till button</h2>
+    <div class="muted" style="margin-bottom:14px">
+      Syncro is hosted software, so it has no place to add a custom button of our own.
+      This bookmarklet is the next best thing: it sits on the browser's bookmarks bar, and
+      one click from any Syncro invoice or POS screen reads the invoice number off the page
+      and opens the card-machine window for it.
+    </div>
+    <div id="dragArea" class="hidden">
+      <p class="muted"><strong>Drag this up onto your bookmarks bar</strong> (or right-click &rarr; Bookmark this link):</p>
+      <a id="bookmarklet" class="bookmarklet" href="#">&#128179; Charge card machine</a>
+      <p class="muted" style="margin-top:14px">
+        Your bridge token is embedded in the bookmark, so keep it to the till machine's own browser profile.
+      </p>
+      <p class="muted">
+        Prefer it to charge the moment you click, with no confirm screen?
+        <label style="color:var(--text)"><input type="checkbox" id="autoMode" style="width:auto"> skip the confirmation step</label>
+      </p>
+    </div>
+    <div id="dragHint" class="muted">Run the connection check above first.</div>
+  </section>
+
+  <section class="card">
+    <h2>3. Placeholders you still need to fill in</h2>
+    <div class="muted" style="margin-bottom:12px">All of these live in <code>.env</code>. Nothing is hard-coded in the source.</div>
+    <table>
+      <thead><tr><th>Setting</th><th>Where to get it</th></tr></thead>
+      <tbody>
+        <tr><td><code>SYNCRO_SUBDOMAIN</code></td><td>The first part of your Syncro web address &mdash; <code>yourfirm</code> in <code>yourfirm.syncromsp.com</code>.</td></tr>
+        <tr><td><code>SYNCRO_API_KEY</code></td><td>Syncro &rarr; Admin &rarr; API Tokens &rarr; New Token. Needs Invoices (view) and Payments (view + create).</td></tr>
+        <tr><td><code>DOJO_API_KEY</code></td><td>developer.dojo.tech &rarr; your app's keys. <code>sk_sandbox_...</code> to test, <code>sk_prod_...</code> when live.</td></tr>
+        <tr><td><code>DOJO_SOFTWARE_HOUSE_ID</code></td><td>Issued by Dojo when they onboard you as an EPOS integrator.</td></tr>
+        <tr><td><code>DOJO_RESELLER_ID</code></td><td>Issued by Dojo alongside the software-house id.</td></tr>
+        <tr><td><code>DOJO_TERMINAL_ID</code></td><td>Optional. Leave blank to auto-pick an available machine; the check above lists the ids it can see.</td></tr>
+        <tr><td><code>BRIDGE_TOKEN</code></td><td>Invent a long random string. <code>node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"</code></td></tr>
+      </tbody>
+    </table>
+  </section>
+</div>
+
+<script type="module">
+const $ = (id) => document.getElementById(id);
+const TOKEN_KEY = 'syncro-dojo-bridge-token';
+$('token').value = localStorage.getItem(TOKEN_KEY) ?? '';
+
+function pill(text, ok) {
+  return `<span class="pill ${ok ? 'ok' : 'bad'}">${text}</span>`;
+}
+
+async function check() {
+  const token = $('token').value.trim();
+  if (!token) return;
+  localStorage.setItem(TOKEN_KEY, token);
+  $('check').disabled = true;
+  $('check').textContent = 'Checking…';
+
+  try {
+    const headers = { Authorization: `Bearer ${token}` };
+    const [healthRes, cfgRes, termRes] = await Promise.all([
+      fetch('/api/health', { headers }),
+      fetch('/api/config', { headers }),
+      fetch('/api/terminals', { headers }),
+    ]);
+
+    if (healthRes.status === 401) {
+      $('hSyncro').innerHTML = pill('token rejected', false);
+      $('healthTable').classList.remove('hidden');
+      return;
+    }
+
+    const health = await healthRes.json();
+    const cfg = cfgRes.ok ? await cfgRes.json() : {};
+    const terms = termRes.ok ? await termRes.json() : { terminals: [] };
+
+    $('hSyncro').innerHTML = health.syncro === 'ok'
+      ? pill('connected', true)
+      : `${pill('failed', false)} <div class="muted">${health.syncro}</div>`;
+    $('hDojo').innerHTML = health.dojo === 'ok'
+      ? pill('connected', true)
+      : `${pill('failed', false)} <div class="muted">${health.dojo}</div>`;
+
+    const list = terms.terminals ?? [];
+    $('hTerminals').innerHTML = list.length
+      ? list.map((t) => `<code>${t.id ?? t.terminalId ?? JSON.stringify(t)}</code> ${t.status ? `&mdash; ${t.status}` : ''}`).join('<br>')
+      : `${pill('none found', false)} <div class="muted">Is the card machine powered on and online?</div>`;
+    $('hMode').innerHTML = `${cfg.sandbox ? 'Sandbox (test cards)' : 'LIVE &mdash; real cards'} · ${cfg.currency ?? ''} · capture: ${cfg.captureMode ?? ''}`;
+
+    $('healthTable').classList.remove('hidden');
+    if (health.syncro === 'ok' && health.dojo === 'ok') buildBookmarklet(token);
+  } catch (err) {
+    $('hSyncro').innerHTML = `${pill('bridge unreachable', false)} <div class="muted">${err.message}</div>`;
+    $('healthTable').classList.remove('hidden');
+  } finally {
+    $('check').disabled = false;
+    $('check').textContent = 'Check';
+  }
+}
+
+/**
+ * The bookmarklet: find the invoice on whatever Syncro page is open, then pop
+ * open the till UI for it. Kept deliberately small and dependency-free.
+ */
+function buildBookmarklet(token) {
+  const base = location.origin;
+  const auto = $('autoMode').checked ? '1' : '0';
+
+  const source = `(function(){
+    var m = location.pathname.match(/\\/invoices\\/(\\d+)/);
+    var id = m && m[1];
+    if (!id) {
+      var t = (document.body ? document.body.innerText : '') || '';
+      var hit = t.match(/Invoice\\s*#?\\s*(\\d{1,9})/i);
+      id = hit && hit[1];
+    }
+    if (!id) id = prompt('Invoice number to charge?');
+    if (!id) return;
+    var u = '${base}/?invoice=' + encodeURIComponent(id)
+          + '&token=' + encodeURIComponent('${token}')
+          + (${auto} ? '&auto=1' : '');
+    var w = window.open(u, 'dojoCardMachine', 'width=520,height=760,noopener');
+    if (!w) alert('Allow pop-ups for Syncro so the card machine window can open.');
+  })();`;
+
+  const href = 'javascript:' + encodeURIComponent(source.replace(/\s+/g, ' '));
+  $('bookmarklet').setAttribute('href', href);
+  $('dragArea').classList.remove('hidden');
+  $('dragHint').classList.add('hidden');
+}
+
+$('check').addEventListener('click', () => void check());
+$('token').addEventListener('keydown', (e) => { if (e.key === 'Enter') void check(); });
+$('autoMode').addEventListener('change', () => {
+  const token = $('token').value.trim();
+  if (token && !$('dragArea').classList.contains('hidden')) buildBookmarklet(token);
+});
+$('bookmarklet').addEventListener('click', (e) => {
+  e.preventDefault();
+  alert('Drag this button onto your bookmarks bar rather than clicking it here.');
+});
+</script>
+</body>
+</html>

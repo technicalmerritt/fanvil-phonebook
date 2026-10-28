@@ -1,0 +1,10 @@
+# Real credentials - never commit
+.env
+
+# Audit trail / local state
+data/
+*.jsonl
+
+node_modules/
+npm-debug.log*
+.DS_Store

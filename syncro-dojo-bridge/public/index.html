@@ -1,0 +1,469 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Card Machine</title>
+<style>
+  :root {
+    --bg: #0f1115;
+    --panel: #181b22;
+    --panel-2: #21252e;
+    --line: #2d323d;
+    --text: #eef1f6;
+    --muted: #9aa3b2;
+    --accent: #2f7d4f;
+    --accent-hover: #37935d;
+    --danger: #b3453c;
+    --warn: #8a6410;
+    --radius: 14px;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    min-height: 100vh;
+    padding: 16px;
+  }
+  .wrap { max-width: 560px; margin: 0 auto; }
+  h1 { font-size: 1.1rem; margin: 0 0 4px; letter-spacing: .02em; }
+  .sub { color: var(--muted); font-size: .85rem; margin-bottom: 16px; }
+  .badge {
+    display: inline-block; font-size: .7rem; text-transform: uppercase;
+    letter-spacing: .08em; padding: 2px 8px; border-radius: 999px;
+    border: 1px solid var(--line); color: var(--muted); margin-left: 6px;
+  }
+  .badge.sandbox { color: #d8a657; border-color: #6b5420; }
+  .card {
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: var(--radius); padding: 18px; margin-bottom: 14px;
+  }
+  label { display: block; font-size: .8rem; color: var(--muted); margin-bottom: 6px; }
+  input {
+    width: 100%; padding: 13px 14px; font-size: 1.05rem;
+    background: var(--panel-2); color: var(--text);
+    border: 1px solid var(--line); border-radius: 10px;
+  }
+  input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+  button {
+    font: inherit; font-weight: 600; cursor: pointer;
+    border-radius: 10px; border: 1px solid transparent;
+    padding: 13px 16px; width: 100%;
+  }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  .btn-primary { background: var(--accent); color: #fff; font-size: 1.15rem; padding: 20px 16px; }
+  .btn-primary:hover:not(:disabled) { background: var(--accent-hover); }
+  .btn-secondary { background: var(--panel-2); color: var(--text); border-color: var(--line); }
+  .btn-danger { background: var(--danger); color: #fff; }
+  .row { display: flex; gap: 10px; }
+  .row > * { flex: 1; }
+  .amount { font-size: 3rem; font-weight: 700; letter-spacing: -.02em; line-height: 1.1; }
+  .meta { color: var(--muted); font-size: .9rem; }
+  .meta strong { color: var(--text); font-weight: 600; }
+  .status { display: flex; gap: 12px; align-items: flex-start; }
+  .dot {
+    width: 12px; height: 12px; border-radius: 50%; margin-top: 7px; flex: none;
+    background: var(--muted);
+  }
+  .dot.pending { background: #d8a657; animation: pulse 1.2s ease-in-out infinite; }
+  .dot.ok { background: #5aa469; }
+  .dot.bad { background: #d4766c; }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .3; } }
+  .status-title { font-size: 1.1rem; font-weight: 600; }
+  .notice {
+    border-radius: 10px; padding: 12px 14px; font-size: .9rem; margin-bottom: 14px;
+    border: 1px solid;
+  }
+  .notice.error { background: #2a1714; border-color: #5e2b24; color: #f0c4bd; }
+  .notice.warn { background: #262012; border-color: #5c4a18; color: #f0dcb0; }
+  .hidden { display: none !important; }
+  ul.invoices { list-style: none; padding: 0; margin: 0; }
+  ul.invoices li { border-top: 1px solid var(--line); }
+  ul.invoices li:first-child { border-top: 0; }
+  ul.invoices button {
+    width: 100%; text-align: left; background: none; border: 0; padding: 13px 2px;
+    display: flex; justify-content: space-between; gap: 12px; color: var(--text);
+    font-weight: 500;
+  }
+  ul.invoices button:hover { color: #fff; background: var(--panel-2); }
+  .inv-amount { color: var(--muted); font-variant-numeric: tabular-nums; }
+  footer { color: var(--muted); font-size: .78rem; text-align: center; padding: 8px 0 24px; }
+  footer a { color: var(--muted); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Card machine <span id="modeBadge" class="badge hidden"></span></h1>
+  <div class="sub">Syncro invoice &rarr; Dojo terminal</div>
+
+  <div id="notice" class="notice error hidden"></div>
+
+  <!-- Token setup, first run only -->
+  <section id="authCard" class="card hidden">
+    <label for="tokenInput">Bridge token</label>
+    <input id="tokenInput" type="password" placeholder="value of BRIDGE_TOKEN" autocomplete="off">
+    <div style="height:10px"></div>
+    <button class="btn-secondary" id="saveToken">Save</button>
+  </section>
+
+  <!-- Invoice lookup -->
+  <section id="lookupCard" class="card hidden">
+    <label for="invoiceInput">Invoice number or ID</label>
+    <div class="row">
+      <input id="invoiceInput" inputmode="numeric" placeholder="e.g. 1042" autocomplete="off">
+      <button class="btn-secondary" id="lookupBtn" style="flex:0 0 110px">Look up</button>
+    </div>
+  </section>
+
+  <!-- Confirm + charge -->
+  <section id="quoteCard" class="card hidden">
+    <div class="meta" id="quoteWho"></div>
+    <div class="amount" id="quoteAmount">&mdash;</div>
+    <div class="meta" id="quoteMeta"></div>
+    <div style="height:18px"></div>
+    <button class="btn-primary" id="chargeBtn">Send to card machine</button>
+  </section>
+
+  <!-- Live charge -->
+  <section id="chargeCard" class="card hidden">
+    <div class="status">
+      <div class="dot" id="statusDot"></div>
+      <div>
+        <div class="status-title" id="statusTitle">Working&hellip;</div>
+        <div class="meta" id="statusMessage"></div>
+      </div>
+    </div>
+    <div style="height:16px"></div>
+    <div class="amount" id="chargeAmount">&mdash;</div>
+    <div class="meta" id="chargeMeta"></div>
+    <div style="height:18px"></div>
+    <div class="row">
+      <button class="btn-danger hidden" id="cancelBtn">Cancel at machine</button>
+      <button class="btn-secondary hidden" id="retryRecordBtn">Retry recording in Syncro</button>
+      <button class="btn-secondary hidden" id="doneBtn">New sale</button>
+    </div>
+  </section>
+
+  <!-- Open invoices -->
+  <section id="listCard" class="card hidden">
+    <label>Unpaid invoices</label>
+    <ul class="invoices" id="invoiceList"></ul>
+  </section>
+
+  <footer>
+    <a href="/setup.html" id="setupLink">Setup &amp; till button</a>
+  </footer>
+</div>
+
+<script type="module">
+const $ = (id) => document.getElementById(id);
+const TOKEN_KEY = 'syncro-dojo-bridge-token';
+const params = new URLSearchParams(location.search);
+
+let token = params.get('token') || localStorage.getItem(TOKEN_KEY) || '';
+if (params.get('token')) {
+  localStorage.setItem(TOKEN_KEY, params.get('token'));
+  // Keep the token out of the address bar / history.
+  const clean = new URL(location.href);
+  clean.searchParams.delete('token');
+  history.replaceState(null, '', clean);
+}
+
+let currency = 'GBP';
+let quote = null;
+let pollTimer = null;
+let activeChargeId = null;
+
+function showNotice(message, kind = 'error') {
+  const el = $('notice');
+  el.textContent = message;
+  el.className = `notice ${kind}`;
+  el.classList.remove('hidden');
+}
+function clearNotice() { $('notice').classList.add('hidden'); }
+function show(id, visible = true) { $(id).classList.toggle('hidden', !visible); }
+
+async function api(pathname, { method = 'GET', body } = {}) {
+  const res = await fetch(pathname, {
+    method,
+    headers: {
+      Authorization: `Bearer ${token}`,
+      ...(body ? { 'Content-Type': 'application/json' } : {}),
+    },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  let payload = null;
+  try { payload = await res.json(); } catch { /* non-JSON error page */ }
+  if (!res.ok) {
+    const err = new Error(payload?.error ?? `Request failed (HTTP ${res.status})`);
+    err.status = res.status;
+    err.payload = payload;
+    throw err;
+  }
+  return payload;
+}
+
+function money(minor) {
+  const symbols = { GBP: '£', EUR: '€', USD: '$' };
+  const sign = minor < 0 ? '-' : '';
+  const abs = Math.abs(minor);
+  return `${sign}${symbols[currency] ?? currency + ' '}${Math.floor(abs / 100)}.${String(abs % 100).padStart(2, '0')}`;
+}
+
+// ---- boot ----------------------------------------------------------------
+async function boot() {
+  if (!token) {
+    show('authCard', true);
+    $('tokenInput').focus();
+    return;
+  }
+  show('authCard', false);
+
+  try {
+    const cfg = await api('/api/config');
+    currency = cfg.currency;
+    if (cfg.sandbox) {
+      $('modeBadge').textContent = 'sandbox';
+      $('modeBadge').className = 'badge sandbox';
+      show('modeBadge', true);
+    }
+    if (!cfg.recordPayment) {
+      showNotice('Recording payments in Syncro is switched off - you will need to enter each payment by hand.', 'warn');
+    }
+  } catch (err) {
+    if (err.status === 401) {
+      localStorage.removeItem(TOKEN_KEY);
+      token = '';
+      show('authCard', true);
+      showNotice('That bridge token was rejected. Check BRIDGE_TOKEN and try again.');
+      return;
+    }
+    showNotice(`Cannot reach the bridge: ${err.message}`);
+    return;
+  }
+
+  show('lookupCard', true);
+  void flagNeedingAttention();
+
+  const invoice = params.get('invoice');
+  if (invoice) {
+    $('invoiceInput').value = invoice;
+    await doLookup(invoice, params.get('auto') === '1');
+  } else {
+    void loadInvoiceList();
+    $('invoiceInput').focus();
+  }
+}
+
+/** A previous sale took money but never made it into Syncro - say so loudly. */
+async function flagNeedingAttention() {
+  try {
+    const { charges } = await api('/api/attention');
+    if (charges.length) {
+      showNotice(
+        `${charges.length} payment(s) were taken on the card machine but are not recorded in Syncro. ` +
+        `Open each from the till log and retry, or enter them by hand. Do not re-charge the customer.`,
+        'warn'
+      );
+    }
+  } catch { /* non-critical */ }
+}
+
+async function loadInvoiceList() {
+  try {
+    const { invoices } = await api('/api/invoices?limit=15');
+    const list = $('invoiceList');
+    list.innerHTML = '';
+    if (!invoices?.length) { show('listCard', false); return; }
+    for (const inv of invoices) {
+      const li = document.createElement('li');
+      const btn = document.createElement('button');
+      const who = inv.customer_business_then_name ?? inv.customer?.business_then_name ?? inv.customer?.fullname ?? 'Customer';
+      const left = document.createElement('span');
+      left.textContent = `#${inv.number ?? inv.id} · ${who}`;
+      const right = document.createElement('span');
+      right.className = 'inv-amount';
+      right.textContent = inv.balance_due ?? inv.balance ?? inv.total ?? '';
+      btn.append(left, right);
+      btn.addEventListener('click', () => {
+        $('invoiceInput').value = inv.id;
+        void doLookup(inv.id);
+      });
+      li.append(btn);
+      list.append(li);
+    }
+    show('listCard', true);
+  } catch { show('listCard', false); }
+}
+
+// ---- quote ---------------------------------------------------------------
+async function doLookup(invoice, autoCharge = false) {
+  clearNotice();
+  show('quoteCard', false);
+  $('lookupBtn').disabled = true;
+  try {
+    quote = await api(`/api/quote?invoice=${encodeURIComponent(invoice)}`);
+    $('quoteWho').textContent =
+      `${quote.customerName ?? 'Customer'} · invoice #${quote.invoiceNumber ?? quote.invoiceId}`;
+    $('quoteAmount').textContent = quote.amountDisplay;
+    $('quoteMeta').textContent = `Outstanding balance, read from Syncro (${quote.amountSource}).`;
+    $('chargeBtn').textContent = `Send ${quote.amountDisplay} to card machine`;
+    $('chargeBtn').disabled = quote.amountMinor <= 0;
+    show('quoteCard', true);
+    show('listCard', false);
+
+    if (quote.alreadyCharging) {
+      showNotice('This invoice is already being charged. Watching that sale instead.', 'warn');
+      watch(quote.alreadyCharging);
+      return;
+    }
+    if (autoCharge && quote.amountMinor > 0) await startCharge();
+  } catch (err) {
+    showNotice(err.message);
+  } finally {
+    $('lookupBtn').disabled = false;
+  }
+}
+
+// ---- charge --------------------------------------------------------------
+async function startCharge() {
+  if (!quote) return;
+  clearNotice();
+  $('chargeBtn').disabled = true;
+  $('chargeBtn').textContent = 'Sending…';
+  try {
+    const started = await api('/api/charges', {
+      method: 'POST',
+      body: { invoice: quote.invoiceId, expectedAmountMinor: quote.amountMinor },
+    });
+    show('quoteCard', false);
+    show('lookupCard', false);
+    render(started);
+    watch(started.chargeId);
+  } catch (err) {
+    showNotice(err.message);
+    $('chargeBtn').disabled = false;
+    $('chargeBtn').textContent = `Send ${quote.amountDisplay} to card machine`;
+  }
+}
+
+function watch(chargeId) {
+  activeChargeId = chargeId;
+  show('chargeCard', true);
+  clearInterval(pollTimer);
+  pollTimer = setInterval(async () => {
+    try {
+      const state = await api(`/api/charges/${encodeURIComponent(chargeId)}`);
+      render(state);
+      if (state.finished) clearInterval(pollTimer);
+    } catch (err) {
+      showNotice(`Lost contact with the bridge: ${err.message}`);
+    }
+  }, 1200);
+}
+
+const STATUS_LABEL = {
+  starting: 'Preparing…',
+  intent_created: 'Preparing…',
+  on_terminal: 'Waiting for the customer',
+  captured: 'Payment taken — recording…',
+  recorded: 'Paid',
+  captured_not_recorded: 'Paid, but NOT recorded in Syncro',
+  failed: 'Not paid',
+  cancelled: 'Cancelled',
+  timed_out: 'Timed out',
+};
+
+function render(state) {
+  const pending = !state.finished;
+  $('statusTitle').textContent = STATUS_LABEL[state.status] ?? state.status;
+  $('statusMessage').textContent = state.message ?? '';
+  $('chargeAmount').textContent = state.amountDisplay;
+  $('chargeMeta').textContent =
+    `${state.customerName ?? 'Customer'} · invoice #${state.invoiceNumber ?? state.invoiceId}` +
+    (state.dojoStatus ? ` · terminal: ${state.dojoStatus}` : '');
+
+  const dot = $('statusDot');
+  dot.className = 'dot ' + (pending ? 'pending' : state.status === 'recorded' ? 'ok' : 'bad');
+
+  show('cancelBtn', state.status === 'on_terminal');
+  show('retryRecordBtn', state.status === 'captured_not_recorded');
+  show('doneBtn', state.finished);
+
+  if (state.status === 'captured_not_recorded') {
+    showNotice(
+      'The card was charged. Recording it against the invoice failed - retry below, or add the ' +
+      'payment in Syncro by hand. Do NOT charge the card again.',
+      'warn'
+    );
+  }
+}
+
+function reset() {
+  clearInterval(pollTimer);
+  activeChargeId = null;
+  quote = null;
+  clearNotice();
+  show('chargeCard', false);
+  show('quoteCard', false);
+  show('lookupCard', true);
+  $('invoiceInput').value = '';
+  $('invoiceInput').focus();
+  void loadInvoiceList();
+  void flagNeedingAttention();
+}
+
+// ---- wiring --------------------------------------------------------------
+$('saveToken').addEventListener('click', () => {
+  const value = $('tokenInput').value.trim();
+  if (!value) return;
+  token = value;
+  localStorage.setItem(TOKEN_KEY, value);
+  clearNotice();
+  void boot();
+});
+$('tokenInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('saveToken').click(); });
+
+$('lookupBtn').addEventListener('click', () => {
+  const value = $('invoiceInput').value.trim();
+  if (value) void doLookup(value);
+});
+$('invoiceInput').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') $('lookupBtn').click();
+});
+
+$('chargeBtn').addEventListener('click', () => void startCharge());
+$('doneBtn').addEventListener('click', reset);
+
+$('cancelBtn').addEventListener('click', async () => {
+  if (!activeChargeId) return;
+  $('cancelBtn').disabled = true;
+  try {
+    render(await api(`/api/charges/${encodeURIComponent(activeChargeId)}/cancel`, { method: 'POST' }));
+  } catch (err) {
+    showNotice(err.message);
+  } finally {
+    $('cancelBtn').disabled = false;
+  }
+});
+
+$('retryRecordBtn').addEventListener('click', async () => {
+  if (!activeChargeId) return;
+  $('retryRecordBtn').disabled = true;
+  try {
+    const state = await api(`/api/charges/${encodeURIComponent(activeChargeId)}/retry-record`, { method: 'POST' });
+    clearNotice();
+    render(state);
+  } catch (err) {
+    showNotice(err.message);
+  } finally {
+    $('retryRecordBtn').disabled = false;
+  }
+});
+
+void boot();
+</script>
+</body>
+</html>
