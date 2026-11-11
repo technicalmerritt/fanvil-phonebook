@@ -21,6 +21,7 @@ const qEl = $('#q');
 
 /* ---------------- api ---------------- */
 async function api(path, opts) {
+  if (window.TILL_BACKEND) return window.TILL_BACKEND(path, opts); // preview build: no server
   const res = await fetch(path, { credentials: 'same-origin', ...opts, headers: { 'Content-Type': 'application/json', ...(opts && opts.headers) } });
   let data = {};
   try { data = await res.json(); } catch { /* empty */ }
@@ -132,6 +133,7 @@ function renderStatus() {
   m.hidden = c.mode !== 'dry'; m.textContent = 'Practice mode';
   m.title = 'Sales are not sent to Syncro';
   const k = c.catalogue;
+  if (c.preview) { $('#cat').textContent = 'Preview · live Syncro lookups'; return; }
   $('#cat').textContent = k.syncing ? `Loading catalogue ${k.page}/${k.pages || '…'}` : (k.error && !k.count ? 'Catalogue unavailable' : k.count.toLocaleString('en-GB') + ' products');
 }
 let toastTimer;
