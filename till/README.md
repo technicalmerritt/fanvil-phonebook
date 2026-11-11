@@ -32,10 +32,13 @@ Checked:
 - Product search and the local catalogue copy (refreshed every 6 hours; each
   scanned item's price is re-checked against Syncro straight away).
 - Reading payment methods.
-- Creating an invoice.
+- Creating and deleting an invoice.
+- Adding a line item with a product link. Syncro fills in the name, cost and
+  price from the product, and treats the price as VAT-inclusive.
 
 Not yet checked. Stay in practice mode until these are:
-- Adding line items with a product link, and whether stock moves.
+- Whether stock moves when a stocked product is sold (every product tested so
+  far had zero stock).
 - Recording a payment, and whether it shows in the register's daily totals.
 - Printing a receipt through Syncro's print queue.
 
