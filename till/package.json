@@ -1,0 +1,8 @@
+{
+  "name": "tm-till",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Fast scan-and-sell till for Technical Merritt, backed by Syncro",
+  "scripts": { "start": "node server.js" },
+  "engines": { "node": ">=22" }
+}

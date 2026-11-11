@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name="theme-color" content="#101820">
+<title>TM Till</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header class="top">
+  <div class="brand">Technical Merritt <span>Till</span></div>
+  <div class="status">
+    <span id="mode" class="badge" hidden></span>
+    <span id="cat" class="cat">Starting…</span>
+  </div>
+</header>
+
+<main class="layout">
+  <section class="basket" aria-label="Current sale">
+    <div id="notice" class="notice" hidden></div>
+    <div id="empty" class="empty">
+      <div class="empty-mark" aria-hidden="true"></div>
+      <h2>Ready to scan</h2>
+      <p>Scan a barcode at any time. Type to search for items without one.</p>
+    </div>
+    <ul id="lines" class="lines"></ul>
+    <footer class="totals">
+      <div class="tot-meta"><span id="count">0 items</span><span id="vat"></span></div>
+      <div class="tot-main"><span>Total</span><strong id="total">£0.00</strong></div>
+    </footer>
+  </section>
+
+  <aside class="side">
+    <div class="searchbox">
+      <input id="q" type="search" placeholder="Search products or type a barcode" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="search" aria-label="Search products">
+      <ul id="results" class="results" hidden></ul>
+    </div>
+
+    <div class="quick">
+      <div class="quick-head"><h3>Quick keys</h3><span id="quickhint">Pin an item from its line to add it here</span></div>
+      <div id="quick" class="quick-grid"></div>
+    </div>
+
+    <div class="tools">
+      <button id="misc" type="button">Misc item</button>
+      <button id="clear" type="button">Clear sale</button>
+      <label class="rcpt"><input id="receipt" type="checkbox" checked> Print receipt</label>
+    </div>
+
+    <div class="pay">
+      <button id="paycard" class="paybtn card" type="button" disabled>Card<small id="cardamt"></small></button>
+      <button id="paycash" class="paybtn cash" type="button" disabled>Cash<small id="cashamt"></small></button>
+      <button id="payother" class="payother" type="button" disabled>Other payment</button>
+    </div>
+  </aside>
+</main>
+
+<div id="overlay" class="overlay" hidden><div id="panel" class="panel" role="dialog" aria-modal="true"></div></div>
+<div id="toast" class="toast" hidden></div>
+<script src="app.js"></script>
+</body>
+</html>
