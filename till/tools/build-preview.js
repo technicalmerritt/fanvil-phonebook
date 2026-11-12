@@ -7,7 +7,8 @@
 const fs = require('fs'); const path = require('path');
 const pub = path.join(__dirname, '..', 'public');
 const html = fs.readFileSync(path.join(pub, 'index.html'), 'utf8');
-const css = fs.readFileSync(path.join(pub, 'styles.css'), 'utf8');
+const css = fs.readFileSync(path.join(pub, 'styles.css'), 'utf8')
+  .replace(/url\(fonts\/([\w.-]+\.woff2)\)/g, (m, f) => 'url(data:font/woff2;base64,' + fs.readFileSync(path.join(pub, 'fonts', f)).toString('base64') + ')');
 const app = fs.readFileSync(path.join(pub, 'app.js'), 'utf8');
 const body = html.slice(html.indexOf('<body>') + 6, html.indexOf('<script src="app.js">'));
 
