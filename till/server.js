@@ -105,6 +105,7 @@ function upsert(raw) {
   if (s.upc && !s.disabled) for (const v of codeVariants(s.upc)) if (!byCode.has(v)) byCode.set(v, s.id);
   return s;
 }
+const bare = (s) => { const { hay, ...rest } = s; return rest; };   // what is saved to disk: never the short name
 // Short names are set on the till and kept on the till. Syncro's own product record is untouched.
 const names = new Map(Object.entries(readJson(NAMES_FILE, {})).map(([k, v]) => [Number(k), String(v)]));
 const pub = (s) => {
@@ -119,6 +120,7 @@ function loadCatalogueFile() {
   try {
     const j = JSON.parse(fs.readFileSync(CATALOGUE_FILE, 'utf8'));
     for (const s of j.products) {
+      if (s.fullTitle) { s.title = s.fullTitle; delete s.fullTitle; }   // heal files saved before short names were kept separate
       s.hay = `${s.title} ${s.sub} ${s.item} ${s.upc} ${s.category}`.toLowerCase();
       products.set(s.id, s);
       if (s.upc && !s.disabled) for (const v of codeVariants(s.upc)) if (!byCode.has(v)) byCode.set(v, s.id);
@@ -148,7 +150,7 @@ async function syncCatalogue() {
       products.delete(id);
     }
     cat.syncedAt = Date.now();
-    const out = { syncedAt: cat.syncedAt, products: [...products.values()].map(pub) };
+    const out = { syncedAt: cat.syncedAt, products: [...products.values()].map(bare) };
     fs.writeFileSync(CATALOGUE_FILE + '.tmp', JSON.stringify(out));
     fs.renameSync(CATALOGUE_FILE + '.tmp', CATALOGUE_FILE);
   } catch (e) {
