@@ -42,6 +42,18 @@ Not yet checked. Stay in practice mode until these are:
 - Recording a payment, and whether it shows in the register's daily totals.
 - Printing a receipt through Syncro's print queue.
 
+## Around the sale
+
+- Quick keys: pin an item from its line, sort keys into coloured groups, and
+  drag them into order in Edit mode. Shared by every device using the till.
+- Short names: give a product a short name on the till. Syncro's own product
+  record is not changed.
+- Staff: add people in Till settings, with an optional PIN each. Once anyone is
+  listed, a sale cannot be paid until someone signs in. Each sale is logged in
+  `data/sales.jsonl` with who made it, and live invoices carry a "Served by" note.
+- Customer display: `display.html` shows the items and the total on a second
+  screen or a tablet, and a thank-you with any change once the sale is paid.
+
 ## Not built yet
 
 - Sending the amount to the Dojo card machine. For now the cashier takes the

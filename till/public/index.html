@@ -15,6 +15,8 @@
     <span id="mode" class="badge" hidden></span>
     <span id="cat" class="cat">Starting…</span>
     <span id="clock" class="clock" aria-hidden="true"></span>
+    <button id="cashier" class="chip" type="button" hidden></button>
+    <button id="settings" class="iconbtn" type="button" aria-label="Till settings" title="Till settings"></button>
     <button id="theme" class="iconbtn" type="button" aria-label="Change theme" hidden></button>
   </div>
 </header>
@@ -43,8 +45,9 @@
     </div>
 
     <div class="quick">
-      <div class="quick-head"><h3>Quick keys</h3><span id="quickhint">Open an item in the sale and pin it to keep it here</span></div>
+      <div class="quick-head"><h3>Quick keys</h3><div id="qtabs" class="qtabs"></div><button id="qedit" class="ghost" type="button" hidden>Edit</button></div>
       <div id="quick" class="quick-grid"></div>
+      <p id="quickhint" class="quickhint"></p>
     </div>
 
     <div class="dock">
@@ -68,6 +71,7 @@
 
 <div id="overlay" class="overlay" hidden><div id="panel" class="panel" role="dialog" aria-modal="true"></div></div>
 <div id="toast" class="toast" role="status" hidden></div>
+<script src="customer-view.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

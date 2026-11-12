@@ -27,6 +27,12 @@ const DATA = path.join(__dirname, 'data');
 const PUBLIC = path.join(__dirname, 'public');
 const CATALOGUE_FILE = path.join(DATA, 'catalogue.json');
 const QUICK_FILE = path.join(DATA, 'quickkeys.json');
+const NAMES_FILE = path.join(DATA, 'names.json');
+const STAFF_FILE = path.join(DATA, 'staff.json');
+const SALES_LOG = path.join(DATA, 'sales.jsonl');
+const GROUP_COLOURS = ['blue', 'green', 'amber', 'red', 'violet', 'slate'];
+const readJson = (f, d) => { try { return JSON.parse(fs.readFileSync(f, 'utf8')); } catch { return d; } };
+const writeJson = (f, v) => { fs.writeFileSync(f + '.tmp', JSON.stringify(v)); fs.renameSync(f + '.tmp', f); };
 const CATALOGUE_TTL_MS = 6 * 60 * 60 * 1000;
 const SYNC_GAP_MS = 500; // 120 requests/min, under Syncro's 180/min limit
 
@@ -99,7 +105,15 @@ function upsert(raw) {
   if (s.upc && !s.disabled) for (const v of codeVariants(s.upc)) if (!byCode.has(v)) byCode.set(v, s.id);
   return s;
 }
-const pub = (s) => { if (!s) return null; const { hay, ...rest } = s; return rest; };
+// Short names are set on the till and kept on the till. Syncro's own product record is untouched.
+const names = new Map(Object.entries(readJson(NAMES_FILE, {})).map(([k, v]) => [Number(k), String(v)]));
+const pub = (s) => {
+  if (!s) return null;
+  const { hay, ...rest } = s;
+  const short = names.get(s.id);
+  if (short) { rest.fullTitle = rest.title; rest.title = short; }
+  return rest;
+};
 
 function loadCatalogueFile() {
   try {
@@ -169,8 +183,10 @@ function search(q) {
   const hits = [];
   for (const s of products.values()) {
     if (s.disabled) continue;
-    if (!toks.every((t) => s.hay.includes(t))) continue;
-    const lead = s.title.toLowerCase().startsWith(toks[0]) || s.item.toLowerCase().startsWith(toks[0]) ? 0 : 1;
+    const short = (names.get(s.id) || '').toLowerCase();
+    if (!toks.every((t) => s.hay.includes(t) || short.includes(t))) continue;
+    // An item the shop has bothered to name comes first, then anything that starts with the search.
+    const lead = short && toks.every((t) => short.includes(t)) ? -1 : (s.title.toLowerCase().startsWith(toks[0]) || s.item.toLowerCase().startsWith(toks[0]) ? 0 : 1);
     hits.push([lead, s.title.length, s]);
     if (hits.length > 400) break;
   }
@@ -179,9 +195,48 @@ function search(q) {
 }
 
 /* ---------------- quick keys ---------------- */
-function readQuick() { try { return JSON.parse(fs.readFileSync(QUICK_FILE, 'utf8')); } catch { return []; } }
-function writeQuick(ids) { fs.writeFileSync(QUICK_FILE, JSON.stringify(ids)); }
-const quickExpanded = () => readQuick().map((id) => pub(products.get(id))).filter(Boolean);
+function readQuick() {
+  const j = readJson(QUICK_FILE, null);
+  if (Array.isArray(j)) return { groups: [], keys: j.map((id) => ({ id, group: null })) };   // first version of the file
+  if (j && Array.isArray(j.keys)) return { groups: Array.isArray(j.groups) ? j.groups : [], keys: j.keys };
+  return { groups: [], keys: [] };
+}
+function quickExpanded() {
+  const q = readQuick();
+  return { groups: q.groups, keys: q.keys.map((k) => { const p = pub(products.get(k.id)); return p ? { ...p, group: k.group || null } : null; }).filter(Boolean) };
+}
+function cleanQuick(b) {
+  const groups = []; const seen = new Set();
+  for (const g of (Array.isArray(b.groups) ? b.groups : []).slice(0, 8)) {
+    const id = String(g.id || ''); const name = String(g.name || '').trim().slice(0, 24);
+    if (!/^[A-Za-z0-9-]{1,24}$/.test(id) || !name || seen.has(id)) continue;
+    seen.add(id); groups.push({ id, name, color: GROUP_COLOURS.includes(g.color) ? g.color : 'slate' });
+  }
+  const keys = []; const ids = new Set();
+  for (const k of (Array.isArray(b.keys) ? b.keys : []).slice(0, 60)) {
+    const id = Number(k.id); if (!Number.isInteger(id) || id <= 0 || ids.has(id)) continue;
+    ids.add(id); keys.push({ id, group: seen.has(k.group) ? k.group : null });
+  }
+  return { groups, keys };
+}
+
+/* ---------------- staff ---------------- */
+const readStaff = () => { const j = readJson(STAFF_FILE, []); return Array.isArray(j) ? j : []; };
+const publicStaff = () => readStaff().map((s) => ({ id: s.id, name: s.name, hasPin: !!s.hash }));
+const hashPin = (pin, salt) => crypto.scryptSync(String(pin), salt, 32).toString('hex');
+
+/* ---------------- customer display ---------------- */
+let displayState = { state: 'idle', lines: [], total: 0, vat: 0, change: null, method: '' };
+const displayClients = new Set();
+const int = (v) => { const n = Math.round(Number(v)); return Number.isFinite(n) ? n : 0; };
+function cleanDisplay(b) {
+  return {
+    state: ['idle', 'sale', 'paid'].includes(b.state) ? b.state : 'idle',
+    lines: (Array.isArray(b.lines) ? b.lines : []).slice(0, 100).map((l) => ({ title: String(l.title || '').slice(0, 120), qty: int(l.qty), unit: int(l.unit), total: int(l.total) })),
+    total: int(b.total), vat: int(b.vat), change: b.change == null ? null : int(b.change), method: String(b.method || '').slice(0, 40),
+  };
+}
+function broadcastDisplay() { const msg = `data: ${JSON.stringify(displayState)}\n\n`; for (const res of displayClients) res.write(msg); }
 
 /* ---------------- sales ---------------- */
 const recentSales = new Map(); // sale_id -> result, so a retried request never double-invoices
@@ -200,6 +255,8 @@ function validateSale(b) {
   }
   if (total !== b.total) return 'Total does not match the lines';
   if (typeof b.method !== 'string' || !b.method) return 'No payment method';
+  const staff = readStaff();
+  if (staff.length && !staff.some((s) => s.id === b.staff_id)) return 'Sign in before taking a payment';
   return null;
 }
 
@@ -211,7 +268,9 @@ function validateSale(b) {
 async function createSaleLive(sale) {
   const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/London' });
   const out = { ok: false, dry: false, steps: [] };
-  const inv = (await syncro('POST', '/invoices', { customer_id: CUSTOMER_ID, date: today })).invoice;
+  const head = { customer_id: CUSTOMER_ID, date: today };
+  if (sale.staffName) head.note = `Served by ${sale.staffName}`;
+  const inv = (await syncro('POST', '/invoices', head)).invoice;
   out.invoice = { id: inv.id, number: inv.number };
   let stage = 'lines';
   try {
@@ -239,10 +298,14 @@ async function createSaleLive(sale) {
 }
 async function createSale(sale) {
   if (recentSales.has(sale.sale_id)) return recentSales.get(sale.sale_id);
+  const who = readStaff().find((s) => s.id === sale.staff_id);
+  sale.staffName = who ? who.name : '';
   let out;
   if (SALES_MODE === 'live') out = await createSaleLive(sale);
   else out = { ok: true, dry: true, invoice: { id: null, number: `PRACTICE-${String(++dryCounter).padStart(3, '0')}` }, steps: [] };
+  out.staff = sale.staffName;
   recentSales.set(sale.sale_id, out);
+  fs.appendFile(SALES_LOG, JSON.stringify({ at: new Date().toISOString(), sale_id: sale.sale_id, staff: sale.staffName, total: sale.total, method: sale.method, items: sale.lines.reduce((n, l) => n + l.qty, 0), invoice: out.invoice ? out.invoice.number : null, ok: out.ok, practice: !!out.dry }) + '\n', () => {});
   if (recentSales.size > 500) recentSales.delete(recentSales.keys().next().value);
   return out;
 }
@@ -328,7 +391,7 @@ const server = http.createServer(async (req, res) => {
       return json(res, 200, {
         mode: SALES_MODE, shop: 'Technical Merritt',
         catalogue: { count: products.size, syncing: cat.syncing, syncedAt: cat.syncedAt, page: cat.page, pages: cat.pages, error: cat.error },
-        cardMethod: CARD_METHOD, cashMethod: CASH_METHOD, methods: await payMethods(),
+        cardMethod: CARD_METHOD, cashMethod: CASH_METHOD, methods: await payMethods(), staff: publicStaff(), colours: GROUP_COLOURS,
       });
     }
     if (p === '/api/lookup' && req.method === 'GET') {
@@ -348,12 +411,55 @@ const server = http.createServer(async (req, res) => {
     if (p === '/api/search' && req.method === 'GET') {
       return json(res, 200, { results: search(url.searchParams.get('q')) });
     }
-    if (p === '/api/quickkeys' && req.method === 'GET') return json(res, 200, { keys: quickExpanded() });
+    if (p === '/api/quickkeys' && req.method === 'GET') return json(res, 200, quickExpanded());
     if (p === '/api/quickkeys' && req.method === 'PUT') {
-      const b = await readBody(req);
-      const ids = Array.isArray(b.ids) ? [...new Set(b.ids.map(Number).filter((n) => Number.isInteger(n) && n > 0))].slice(0, 48) : [];
-      writeQuick(ids);
-      return json(res, 200, { keys: quickExpanded() });
+      writeJson(QUICK_FILE, cleanQuick(await readBody(req)));
+      return json(res, 200, quickExpanded());
+    }
+    if (p === '/api/names' && req.method === 'PUT') {
+      const b = await readBody(req); const id = Number(b.id);
+      if (!products.has(id)) return json(res, 404, { error: 'Unknown product' });
+      const name = String(b.name || '').trim().slice(0, 60);
+      if (name) names.set(id, name); else names.delete(id);
+      writeJson(NAMES_FILE, Object.fromEntries(names));
+      return json(res, 200, { product: pub(products.get(id)) });
+    }
+    if (p === '/api/staff' && req.method === 'POST') {
+      const b = await readBody(req); const name = String(b.name || '').trim().slice(0, 40); const pin = String(b.pin || '');
+      if (!name) return json(res, 400, { error: 'Enter a name' });
+      if (pin && !/^\d{4,8}$/.test(pin)) return json(res, 400, { error: 'A PIN is 4 to 8 digits' });
+      const staff = readStaff();
+      if (staff.length >= 30) return json(res, 400, { error: 'That is the most staff the till holds' });
+      const rec = { id: crypto.randomBytes(6).toString('hex'), name, salt: null, hash: null };
+      if (pin) { rec.salt = crypto.randomBytes(12).toString('hex'); rec.hash = hashPin(pin, rec.salt); }
+      staff.push(rec); writeJson(STAFF_FILE, staff);
+      return json(res, 200, { staff: publicStaff() });
+    }
+    if (p === '/api/staff' && req.method === 'DELETE') {
+      writeJson(STAFF_FILE, readStaff().filter((s) => s.id !== url.searchParams.get('id')));
+      return json(res, 200, { staff: publicStaff() });
+    }
+    if (p === '/api/staff/signin' && req.method === 'POST') {
+      if (!loginAllowed('staff:' + (req.socket.remoteAddress || ''))) return json(res, 429, { error: 'Too many tries. Wait a minute.' });
+      const b = await readBody(req); const s = readStaff().find((x) => x.id === b.id);
+      if (!s) return json(res, 404, { error: 'Unknown member of staff' });
+      if (s.hash) {
+        const given = Buffer.from(hashPin(String(b.pin || ''), s.salt)); const want = Buffer.from(s.hash);
+        if (given.length !== want.length || !crypto.timingSafeEqual(given, want)) return json(res, 401, { error: 'Wrong PIN' });
+      }
+      return json(res, 200, { ok: true, staff: { id: s.id, name: s.name } });
+    }
+    if (p === '/api/display' && req.method === 'PUT') {
+      displayState = cleanDisplay(await readBody(req)); broadcastDisplay();
+      return json(res, 200, { ok: true });
+    }
+    if (p === '/api/display/stream' && req.method === 'GET') {
+      res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store', Connection: 'keep-alive', ...SEC });
+      res.write(`data: ${JSON.stringify(displayState)}\n\n`);
+      displayClients.add(res);
+      const beat = setInterval(() => res.write(': keep-alive\n\n'), 25000);
+      req.on('close', () => { clearInterval(beat); displayClients.delete(res); });
+      return;
     }
     if (p === '/api/sync' && req.method === 'POST') { syncCatalogue(); return json(res, 202, { ok: true }); }
     if (p === '/api/sale' && req.method === 'POST') {

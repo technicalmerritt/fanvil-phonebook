@@ -14,7 +14,11 @@ const S = {
   cfg: null,
   lines: store.get('till.lines', []),
   saleId: store.get('till.saleId', null),
-  quick: [],
+  quick: [],            // pinned products, in order, each with an optional group id
+  groups: [],           // quick key groups: {id, name, color}
+  tab: 'all',
+  editing: false,
+  cashier: store.get('till.cashier', null),   // {id, name} of whoever is signed in
   overlay: null,        // name of the open dialog
   dialogKeys: null,     // keyboard handler owned by the open dialog
   busy: false,
@@ -65,7 +69,7 @@ function addProduct(p, source) {
   let line = S.lines.find((l) => l.product_id === p.id);
   if (line) { line.qty += 1; S.lines = [line, ...S.lines.filter((l) => l !== line)]; }
   else {
-    line = { key: 'p' + p.id, product_id: p.id, title: p.title, sub: p.sub || p.upc || '', item: p.item || p.title, name: p.lineName || p.title, unit, base: unit, qty: 1, taxable: p.taxable !== false, cost: Number(p.cost) || 0 };
+    line = { key: 'p' + p.id, product_id: p.id, title: p.title, fullTitle: p.fullTitle || p.title, short: p.fullTitle ? p.title : '', sub: p.sub || p.upc || '', item: p.item || p.title, name: p.lineName || p.title, unit, base: unit, qty: 1, taxable: p.taxable !== false, cost: Number(p.cost) || 0 };
     S.lines.unshift(line);
   }
   save(); render(line.key); beepOk(); pulse(); hideNotice();
@@ -124,19 +128,78 @@ function render(flashKey) {
   const can = S.lines.length > 0 && !S.busy;
   $('#paycard').disabled = !can; $('#paycash').disabled = !can; $('#payother').disabled = !can;
   $('#clear').disabled = !S.lines.length;
+  pushDisplay();
 }
 function renderQuick() {
-  const g = $('#quick'); g.textContent = '';
-  for (const p of S.quick) {
-    const b = el('button', 'qk'); b.type = 'button';
+  if (S.tab !== 'all' && !S.groups.some((g) => g.id === S.tab)) S.tab = 'all';
+  const tabs = $('#qtabs'); tabs.textContent = '';
+  const tab = (id, label, color) => {
+    const b = el('button', 'qtab' + (S.tab === id ? ' on' : ''), label); b.type = 'button';
+    if (color) b.dataset.c = color;
+    b.onclick = () => { if (S.editing && id !== 'all' && S.tab === id) return showGroup(S.groups.find((g) => g.id === id)); S.tab = id; renderQuick(); };
+    return b;
+  };
+  if (S.groups.length || S.editing) { tabs.append(tab('all', 'All')); S.groups.forEach((g) => tabs.append(tab(g.id, g.name, g.color))); }
+  if (S.editing && S.groups.length < 8) { const add = el('button', 'qtab add', '+ Group'); add.type = 'button'; add.onclick = () => showGroup(null); tabs.append(add); }
+  const g = $('#quick'); g.textContent = ''; g.classList.toggle('editing', S.editing);
+  for (const p of S.quick.filter((k) => S.tab === 'all' || k.group === S.tab)) {
+    const b = el('button', 'qk'); b.type = 'button'; b.dataset.id = p.id;
+    const grp = S.groups.find((x) => x.id === p.group); if (grp) b.dataset.c = grp.color;
     b.append(el('b', null, p.title), el('i', null, fmt(Math.round(p.price * 100))));
-    b.onclick = () => addProduct(p, 'cache');
+    b.onclick = () => { if (dragMoved) return; if (S.editing) showKey(p); else addProduct(p, 'cache'); };
+    if (S.editing) b.addEventListener('pointerdown', (e) => { if (e.button) return; drag = { el: b, x: e.clientX, y: e.clientY, active: false, pid: e.pointerId }; dragMoved = false; });
     g.append(b);
   }
-  $('#quickhint').hidden = S.quick.length > 0;
+  const edit = $('#qedit'); edit.hidden = !S.quick.length && !S.editing; edit.textContent = S.editing ? 'Done' : 'Edit';
+  $('#quickhint').textContent = S.editing ? 'Drag a key to move it. Tap a key to change its group or remove it. Tap a selected group to rename it.'
+    : (S.quick.length ? '' : 'Tap an item in the sale and pin it to keep it here.');
 }
+async function saveQuick() {
+  try {
+    const r = await api('/api/quickkeys', { method: 'PUT', body: JSON.stringify({ groups: S.groups, keys: S.quick.map((k) => ({ id: k.id, group: k.group || null })) }) });
+    if (r.ok) { S.groups = r.data.groups; S.quick = r.data.keys; }
+  } catch { /* keep what is on screen */ }
+  renderQuick();
+}
+// Drag to reorder, for finger or mouse. The key follows the pointer and the others make room.
+let drag = null, dragMoved = false;
+document.addEventListener('pointermove', (e) => {
+  if (!drag) return;
+  let dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+  if (!drag.active) {
+    if (Math.hypot(dx, dy) < 8) return;
+    drag.active = true; dragMoved = true; drag.el.classList.add('dragging');
+    try { drag.el.setPointerCapture(drag.pid); } catch { /* older browsers */ }
+  }
+  e.preventDefault();
+  const over = document.elementFromPoint(e.clientX, e.clientY); const target = over && over.closest ? over.closest('.qk') : null;
+  if (target && target !== drag.el && target.parentNode === drag.el.parentNode) {
+    drag.el.style.transform = '';
+    const before = drag.el.getBoundingClientRect();
+    const kids = [...target.parentNode.children];
+    if (kids.indexOf(drag.el) < kids.indexOf(target)) target.after(drag.el); else target.before(drag.el);
+    const after = drag.el.getBoundingClientRect();
+    drag.x += after.left - before.left; drag.y += after.top - before.top;
+    dx = e.clientX - drag.x; dy = e.clientY - drag.y;
+  }
+  drag.el.style.transform = `translate(${dx}px,${dy}px) scale(1.04)`;
+}, { passive: false });
+function endDrag() {
+  if (!drag) return;
+  const d = drag; drag = null;
+  if (!d.active) return;
+  d.el.classList.remove('dragging'); d.el.style.transform = '';
+  const order = [...d.el.parentNode.children].map((c) => Number(c.dataset.id));
+  const vis = new Set(order); const byId = new Map(S.quick.map((k) => [k.id, k])); let i = 0;
+  S.quick = S.quick.map((k) => (vis.has(k.id) ? byId.get(order[i++]) : k));
+  saveQuick();
+  setTimeout(() => { dragMoved = false; }, 60);
+}
+document.addEventListener('pointerup', endDrag);
+document.addEventListener('pointercancel', endDrag);
 function renderStatus() {
   const c = S.cfg, cat = $('#cat');
+  renderCashier();
   if (!S.online) { cat.className = 'cat down'; cat.textContent = 'Offline'; return; }
   if (!c) return;
   const m = $('#mode');
@@ -210,7 +273,7 @@ qEl.addEventListener('input', () => { clearTimeout(searchTimer); searchTimer = s
 let buf = '', bufTimer = null, sTimes = [];
 const isPrintable = (e) => e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey;
 function flushToSearch() { if (!buf) return; qEl.value = buf; buf = ''; qEl.focus(); runSearch(); }
-const SHORTCUTS = { F3: () => { qEl.focus(); qEl.select(); }, F4: () => showMisc(''), F8: () => { if (S.lines.length) showCard(); }, F9: () => { if (S.lines.length) showCash(); } };
+const SHORTCUTS = { F3: () => { qEl.focus(); qEl.select(); }, F4: () => showMisc(''), F8: () => { if (S.lines.length) ensureCashier(showCard); }, F9: () => { if (S.lines.length) ensureCashier(showCash); } };
 
 document.addEventListener('keydown', (e) => {
   const t = e.target;
@@ -256,12 +319,12 @@ document.addEventListener('click', (e) => { if (!e.target.closest('.searchbox'))
 
 /* ---------------- dialogs ---------------- */
 function openOverlay(name, build) {
-  const p = $('#panel'); p.textContent = ''; S.dialogKeys = null; build(p);
+  const p = $('#panel'); p.textContent = ''; p.className = 'panel'; S.dialogKeys = null; build(p);
   S.overlay = name; $('#overlay').hidden = false;
   if (document.activeElement && document.activeElement !== document.body) document.activeElement.blur();
   const first = p.querySelector('[data-focus]'); if (first) setTimeout(() => first.focus(), 30);
 }
-function closeOverlay() { S.overlay = null; S.dialogKeys = null; $('#overlay').hidden = true; $('#panel').textContent = ''; }
+function closeOverlay() { const was = S.overlay; S.overlay = null; S.dialogKeys = null; $('#overlay').hidden = true; $('#panel').textContent = ''; if (was === 'done') pushDisplay(); }
 $('#overlay').addEventListener('click', (e) => { if (e.target === $('#overlay') && S.overlay !== 'pin' && S.overlay !== 'busy') closeOverlay(); });
 const btn = (text, cls, fn) => { const b = el('button', cls, text); b.type = 'button'; b.onclick = fn; return b; };
 const parseMoney = (v) => { const n = Number(String(v).replace(/[£,\s]/g, '')); return Number.isFinite(n) && n >= 0 ? Math.round(n * 100) : null; };
@@ -277,25 +340,80 @@ function showLine(l) {
     for (const pc of [10, 20, 50]) chips.append(btn(pc + '% off', null, () => { ip.value = (Math.round(l.base * (100 - pc) / 100) / 100).toFixed(2); }));
     chips.append(btn('List price', null, () => { ip.value = (l.base / 100).toFixed(2); }));
     p.append(fq, fp, chips);
-    const apply = () => {
+    let iname = null;
+    if (l.product_id) {
+      const fn = el('label', 'field', 'Short name on the till'); iname = el('input'); iname.type = 'text'; iname.maxLength = 60; iname.id = 'line-short';
+      iname.value = l.short || ''; iname.placeholder = (l.fullTitle || l.title).slice(0, 40); fn.append(iname); p.append(fn);
+    }
+    const apply = async () => {
       const q = Math.floor(Number(iq.value)); const u = parseMoney(ip.value);
       if (u != null) l.unit = u;
+      if (iname && iname.value.trim() !== (l.short || '')) await renameProduct(l, iname.value.trim());
       closeOverlay(); setQty(l, Number.isFinite(q) ? q : l.qty);
     };
     const r1 = el('div', 'row');
     if (l.product_id) {
       const pinned = S.quick.some((k) => k.id === l.product_id);
       r1.append(btn(pinned ? 'Unpin quick key' : 'Pin as quick key', null, async () => {
-        const ids = S.quick.map((k) => k.id).filter((id) => id !== l.product_id);
-        if (!pinned) ids.push(l.product_id);
-        try { const r = await api('/api/quickkeys', { method: 'PUT', body: JSON.stringify({ ids }) }); if (r.ok) { S.quick = r.data.keys; renderQuick(); toast(pinned ? 'Removed from quick keys' : 'Added to quick keys'); } } catch { /* ignore */ }
+        if (pinned) S.quick = S.quick.filter((k) => k.id !== l.product_id);
+        else S.quick.push({ id: l.product_id, title: l.title, price: l.base / 100, group: S.tab !== 'all' ? S.tab : null });
+        await saveQuick(); toast(pinned ? 'Removed from quick keys' : 'Added to quick keys');
         apply();
       }));
     }
     r1.append(btn('Remove', 'danger', () => { closeOverlay(); setQty(l, 0); }));
     const r2 = el('div', 'row'); r2.append(btn('Done', 'go card', apply));
     p.append(r1, r2);
-    [iq, ip].forEach((i) => i.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); apply(); } }));
+    [iq, ip, iname].filter(Boolean).forEach((i) => i.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); apply(); } }));
+  });
+}
+async function renameProduct(l, name) {
+  try {
+    const r = await api('/api/names', { method: 'PUT', body: JSON.stringify({ id: l.product_id, name }) });
+    if (!r.ok) return toast('Could not save the short name');
+    const pr = r.data.product;
+    l.title = pr.title; l.fullTitle = pr.fullTitle || pr.title; l.short = name;
+    const k = S.quick.find((x) => x.id === l.product_id); if (k) { k.title = pr.title; renderQuick(); }
+    save();
+  } catch { toast('Could not save the short name'); }
+}
+function showKey(k) {
+  openOverlay('key', (p) => {
+    p.append(el('h2', null, k.title), el('p', null, 'Quick key'));
+    if (S.groups.length) {
+      p.append(el('span', 'label', 'Group'));
+      const chips = el('div', 'chips');
+      const mk = (id, label, color) => { const b = btn(label, (k.group || null) === id ? 'on' : null, async () => { k.group = id; closeOverlay(); await saveQuick(); }); if (color) b.dataset.c = color; return b; };
+      chips.append(mk(null, 'No group')); S.groups.forEach((g) => chips.append(mk(g.id, g.name, g.color)));
+      p.append(chips);
+    }
+    const r = el('div', 'row');
+    r.append(btn('Remove key', 'danger', async () => { S.quick = S.quick.filter((x) => x.id !== k.id); closeOverlay(); await saveQuick(); }), btn('Done', 'go card', closeOverlay));
+    p.append(r);
+  });
+}
+function showGroup(g) {
+  const colours = (S.cfg && S.cfg.colours) || ['blue', 'green', 'amber', 'red', 'violet', 'slate'];
+  let colour = g ? g.color : colours[S.groups.length % colours.length];
+  openOverlay('group', (p) => {
+    p.append(el('h2', null, g ? 'Edit group' : 'New group'), el('p', null, 'Groups sort quick keys into tabs, each with its own colour.'));
+    const fn = el('label', 'field', 'Name'); const iname = el('input'); iname.type = 'text'; iname.maxLength = 24; iname.id = 'group-name'; iname.value = g ? g.name : ''; iname.placeholder = 'Repairs'; iname.setAttribute('data-focus', ''); fn.append(iname);
+    const sw = el('div', 'swatches');
+    const draw = () => { sw.textContent = ''; colours.forEach((c) => { const b = btn('', 'swatch' + (c === colour ? ' on' : ''), () => { colour = c; draw(); }); b.dataset.c = c; b.setAttribute('aria-label', c); sw.append(b); }); };
+    draw();
+    const err = el('div', 'err'); err.hidden = true;
+    const go = async () => {
+      const name = iname.value.trim();
+      if (!name) { err.textContent = 'Give the group a name'; err.hidden = false; return; }
+      if (g) { g.name = name; g.color = colour; } else { const id = 'g' + uid().replace(/[^A-Za-z0-9]/g, '').slice(0, 10); S.groups.push({ id, name, color: colour }); S.tab = id; }
+      closeOverlay(); await saveQuick();
+    };
+    const r = el('div', 'row');
+    if (g) r.append(btn('Delete group', 'danger', async () => { S.groups = S.groups.filter((x) => x.id !== g.id); S.quick.forEach((k) => { if (k.group === g.id) k.group = null; }); S.tab = 'all'; closeOverlay(); await saveQuick(); }));
+    else r.append(btn('Cancel', null, closeOverlay));
+    r.append(btn('Save', 'go card', go));
+    p.append(fn, el('span', 'label', 'Colour'), sw, err, r);
+    iname.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); go(); } });
   });
 }
 function showMisc(defaultName) {
@@ -384,7 +502,7 @@ async function submit(method, tenderedPence) {
   if (S.busy) return;
   const t = total();
   const body = {
-    sale_id: S.saleId, total: t, method, print: $('#receipt').checked,
+    sale_id: S.saleId, total: t, method, print: $('#receipt').checked, staff_id: S.cashier ? S.cashier.id : null,
     lines: S.lines.slice().reverse().map((l) => ({ product_id: l.product_id, item: l.item, name: l.name, qty: l.qty, unit: l.unit, taxable: l.taxable, cost: l.cost })),
   };
   S.busy = true; render();
@@ -404,9 +522,10 @@ async function submit(method, tenderedPence) {
   if (r.ok && d.ok) {
     const change = tenderedPence != null ? tenderedPence - t : null;
     S.lines = []; save(); render(); chime();
+    pushDisplay({ state: 'paid', lines: [], total: t, vat: 0, change, method });
     return openOverlay('done', (p) => {
       p.append(svg(TICK), el('h2', 'center', d.dry ? 'Practice sale complete' : 'Sale complete'));
-      p.append(el('p', 'center', d.dry ? 'Nothing was sent to Syncro.' : 'Invoice #' + d.invoice.number + ', paid by ' + method));
+      p.append(el('p', 'center', (d.dry ? 'Nothing was sent to Syncro.' : 'Invoice #' + d.invoice.number + ', paid by ' + method) + (d.staff ? ' Served by ' + d.staff + '.' : '')));
       if (change != null) { p.append(el('p', 'center label', 'Change due')); p.append(el('div', 'big change', fmt(change))); }
       else p.append(el('div', 'big', fmt(t)));
       if (d.printError) p.append(el('div', 'err', 'The receipt did not print: ' + d.printError));
@@ -446,10 +565,106 @@ function showPin() {
   });
 }
 
+/* ---------------- customer display ---------------- */
+const displayState = () => ({ state: S.lines.length ? 'sale' : 'idle', lines: S.lines.slice().reverse().map((l) => ({ title: l.title, qty: l.qty, unit: l.unit, total: l.unit * l.qty })), total: total(), vat: vatIncluded(), change: null, method: '' });
+let dispTimer;
+function pushDisplay(st) {
+  clearTimeout(dispTimer);
+  dispTimer = setTimeout(() => { api('/api/display', { method: 'PUT', body: JSON.stringify(st || displayState()) }).catch(() => {}); }, st ? 0 : 120);
+}
+function openDisplay() {
+  if (!PREVIEW) { closeOverlay(); window.open('display.html', 'tm-display', 'popup,width=1024,height=640'); return; }
+  openOverlay('custview', (p) => {   // the preview has no second window, so show it in place
+    p.classList.add('wide');
+    p.append(el('h2', null, 'Customer display'), el('p', null, 'This is what the customer sees on the second screen for the sale as it stands now.'));
+    const frame = el('div', 'cvframe'); const box = el('div', 'cv'); frame.append(box); p.append(frame);
+    window.CustomerView.render(box, displayState());
+    const r = el('div', 'row'); r.append(btn('Close', null, closeOverlay)); p.append(r);
+  });
+}
+
+/* ---------------- staff ---------------- */
+const GEAR = '<svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="2.2" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M8 1.5v2M8 12.5v2M1.5 8h2M12.5 8h2M3.4 3.4l1.4 1.4M11.2 11.2l1.4 1.4M3.4 12.6l1.4-1.4M11.2 4.8l1.4-1.4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>';
+const staffList = () => (S.cfg && S.cfg.staff) || [];
+function renderCashier() {
+  const b = $('#cashier'); const list = staffList();
+  if (S.cashier && !list.some((s) => s.id === S.cashier.id)) { S.cashier = null; store.set('till.cashier', null); }
+  b.hidden = !list.length;
+  b.textContent = S.cashier ? S.cashier.name : 'Sign in'; b.classList.toggle('none', !S.cashier);
+}
+function setCashier(c) { S.cashier = c; store.set('till.cashier', c); renderCashier(); }
+function ensureCashier(next) { if (!staffList().length || S.cashier) return next(); showStaff(next); }
+function showStaff(next) {
+  openOverlay('staff', (p) => {
+    p.append(el('h2', null, 'Who is serving?'), el('p', null, next ? 'Sign in to take this payment.' : 'Every sale records who made it.'));
+    const grid = el('div', 'people');
+    staffList().forEach((s) => grid.append(btn(s.name, S.cashier && S.cashier.id === s.id ? 'on' : null, () => (s.hasPin ? askPin(s, next) : signIn(s, '', next)))));
+    p.append(grid);
+    const r = el('div', 'row');
+    if (S.cashier) r.append(btn('Sign out', null, () => { setCashier(null); closeOverlay(); }));
+    r.append(btn('Cancel', null, closeOverlay)); p.append(r);
+  });
+}
+async function signIn(s, pin, next, onFail) {
+  let r;
+  try { r = await api('/api/staff/signin', { method: 'POST', body: JSON.stringify({ id: s.id, pin }) }); } catch { return onFail ? onFail('No connection') : toast('No connection'); }
+  if (!r.ok) return onFail ? onFail(r.data.error || 'Wrong PIN') : toast(r.data.error || 'Could not sign in');
+  setCashier(r.data.staff); closeOverlay();
+  if (next) next(); else toast('Signed in as ' + r.data.staff.name);
+}
+function askPin(s, next) {
+  let pin = '';
+  openOverlay('staffpin', (p) => {
+    p.append(el('h2', 'center', s.name), el('p', 'center', 'Enter your PIN.'));
+    const dots = el('div', 'pin-dots'); const err = el('div', 'err'); err.hidden = true;
+    const draw = () => { dots.textContent = ''; for (let i = 0; i < Math.max(4, pin.length); i++) dots.append(el('i', i < pin.length ? 'on' : '')); };
+    const go = () => { if (pin) signIn(s, pin, next, (m) => { err.textContent = m; err.hidden = false; pin = ''; draw(); }); };
+    const press = (k) => { if (k === '⌫') pin = pin.slice(0, -1); else if (k === 'OK') return go(); else if (pin.length < 8) pin += k; draw(); };
+    const pad = el('div', 'keypad');
+    for (const k of ['1', '2', '3', '4', '5', '6', '7', '8', '9', '⌫', '0', 'OK']) pad.append(btn(k, null, () => press(k)));
+    const r = el('div', 'row'); r.append(btn('Back', null, () => showStaff(next)));
+    p.append(dots, err, pad, r); draw();
+    S.dialogKeys = (e) => { if (/^[0-9]$/.test(e.key)) { e.preventDefault(); press(e.key); } else if (e.key === 'Backspace') { e.preventDefault(); press('⌫'); } else if (e.key === 'Enter') { e.preventDefault(); go(); } };
+  });
+}
+function showSettings() {
+  openOverlay('settings', (p) => {
+    p.append(el('h2', null, 'Till settings'));
+    const st = el('div', 'sect'); st.append(el('h3', null, 'Staff'));
+    const list = staffList();
+    if (!list.length) st.append(el('p', null, 'Add the people who use this till. Once anyone is listed, a sale cannot be paid until someone signs in.'));
+    list.forEach((s) => {
+      const row = el('div', 'srow'); const name = el('span', null, s.name); name.append(el('small', null, s.hasPin ? 'PIN set' : 'no PIN'));
+      row.append(name, btn('Remove', null, async () => { try { const r = await api('/api/staff?id=' + encodeURIComponent(s.id), { method: 'DELETE' }); if (r.ok) { S.cfg.staff = r.data.staff; renderCashier(); showSettings(); } } catch { toast('Could not remove'); } }));
+      st.append(row);
+    });
+    const add = el('div', 'inline'); const iname = el('input'); iname.type = 'text'; iname.placeholder = 'Name'; iname.maxLength = 40; iname.id = 'staff-name'; iname.setAttribute('aria-label', 'Name');
+    const ipin = el('input'); ipin.type = 'text'; ipin.inputMode = 'numeric'; ipin.placeholder = 'PIN (optional)'; ipin.maxLength = 8; ipin.id = 'staff-pin'; ipin.setAttribute('aria-label', 'PIN, optional'); ipin.autocomplete = 'off';
+    const err = el('div', 'err'); err.hidden = true;
+    const go = async () => {
+      try {
+        const r = await api('/api/staff', { method: 'POST', body: JSON.stringify({ name: iname.value, pin: ipin.value }) });
+        if (!r.ok) { err.textContent = r.data.error || 'Could not add'; err.hidden = false; return; }
+        S.cfg.staff = r.data.staff; renderCashier(); showSettings();
+      } catch { err.textContent = 'No connection'; err.hidden = false; }
+    };
+    add.append(iname, ipin, btn('Add', null, go)); st.append(add, err);
+    [iname, ipin].forEach((i) => i.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); go(); } }));
+    const cd = el('div', 'sect'); cd.append(el('h3', null, 'Customer display'), el('p', null, PREVIEW ? 'Shows the items and the total to the customer on a second screen.' : 'Opens in its own window. Drag it to the screen facing the customer and make it full screen. A tablet can open the same page from the till’s address.'));
+    const cr = el('div', 'srow'); cr.append(el('span', null, 'Second screen'), btn(PREVIEW ? 'Preview it' : 'Open display', null, openDisplay)); cd.append(cr);
+    const r = el('div', 'row'); r.append(btn('Done', 'go card', closeOverlay));
+    p.append(st, cd, r);
+  });
+}
+
 /* ---------------- wiring ---------------- */
-$('#paycard').onclick = showCard;
-$('#paycash').onclick = showCash;
-$('#payother').onclick = showOther;
+$('#paycard').onclick = () => ensureCashier(showCard);
+$('#paycash').onclick = () => ensureCashier(showCash);
+$('#payother').onclick = () => ensureCashier(showOther);
+$('#cashier').onclick = () => showStaff(null);
+$('#settings').onclick = showSettings;
+$('#settings').append(svg(GEAR));
+$('#qedit').onclick = () => { S.editing = !S.editing; renderQuick(); };
 $('#misc').onclick = () => showMisc('');
 $('#clear').onclick = () => {
   if (!S.lines.length) return;
@@ -495,7 +710,7 @@ async function loadState() {
 }
 async function boot() {
   await loadState();
-  try { const r = await api('/api/quickkeys'); if (r.ok) { S.quick = r.data.keys; renderQuick(); } } catch { /* later */ }
+  try { const r = await api('/api/quickkeys'); if (r.ok) { S.groups = r.data.groups || []; S.quick = r.data.keys || []; renderQuick(); } } catch { /* later */ }
 }
 render(); renderQuick(); boot();
 })();
