@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name="theme-color" content="#08090c">
+<title>TM Till</title>
+<link rel="preload" href="fonts/geist-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header class="top">
+  <div class="brand"><span class="logo" aria-hidden="true"></span><b>Technical Merritt</b><span>Till</span></div>
+  <div class="status">
+    <span id="mode" class="badge" hidden></span>
+    <span id="cat" class="cat">Starting…</span>
+    <span id="clock" class="clock" aria-hidden="true"></span>
+    <button id="cashier" class="chip" type="button" hidden></button>
+    <button id="settings" class="iconbtn" type="button" aria-label="Till settings" title="Till settings"></button>
+    <button id="theme" class="iconbtn" type="button" aria-label="Change theme" hidden></button>
+  </div>
+</header>
+
+<main class="layout">
+  <section class="basket" id="basket" aria-label="Current sale">
+    <div class="basket-head">
+      <h2>Current sale</h2>
+      <span id="count" class="meta">0 items</span>
+      <button id="clear" class="ghost" type="button" disabled>Clear</button>
+    </div>
+    <div id="notice" class="notice" hidden></div>
+    <div id="empty" class="empty">
+      <div class="scanmark" aria-hidden="true"><i></i></div>
+      <h3>Ready to scan</h3>
+      <p>Scan a barcode at any time. Start typing to search for an item without one.</p>
+    </div>
+    <ul id="lines" class="lines"></ul>
+  </section>
+
+  <aside class="side">
+    <div class="searchbox">
+      <input id="q" type="search" placeholder="Search products" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="search" aria-label="Search products">
+      <kbd class="hint">F3</kbd>
+      <ul id="results" class="results" hidden></ul>
+    </div>
+
+    <div class="quick">
+      <div class="quick-head"><h3>Quick keys</h3><div id="qtabs" class="qtabs"></div><button id="qedit" class="ghost" type="button" hidden>Edit</button></div>
+      <div id="quick" class="quick-grid"></div>
+      <p id="quickhint" class="quickhint"></p>
+    </div>
+
+    <div class="dock">
+      <div class="due">
+        <span class="label">To pay</span>
+        <strong id="total">£0.00</strong>
+        <span id="vat" class="meta"></span>
+      </div>
+      <div class="tools">
+        <button id="misc" type="button">Misc item <kbd>F4</kbd></button>
+        <label class="rcpt"><input id="receipt" type="checkbox" checked><span>Print receipt</span></label>
+      </div>
+      <div class="pay">
+        <button id="paycard" class="paybtn card" type="button" disabled><span>Card</span><kbd>F8</kbd></button>
+        <button id="paycash" class="paybtn cash" type="button" disabled><span>Cash</span><kbd>F9</kbd></button>
+        <button id="payother" class="payother" type="button" disabled>Other payment</button>
+      </div>
+    </div>
+  </aside>
+</main>
+
+<div id="overlay" class="overlay" hidden><div id="panel" class="panel" role="dialog" aria-modal="true"></div></div>
+<div id="toast" class="toast" role="status" hidden></div>
+<script src="customer-view.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
