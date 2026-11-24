@@ -1,0 +1,576 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0b0d12">
+<title>Lights</title>
+<style>
+  :root{
+    --bg:#0b0d12;--card:#161a22;--card2:#1e2430;--track:#2a3040;
+    --text:#f2f4f8;--muted:#8a93a6;--on:#ffd27a;--danger:#ff6b6b;
+    --radius:18px;--gutter:16px;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;min-height:100%}
+  body{
+    background:var(--bg);color:var(--text);
+    font:15px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,system-ui,sans-serif;
+    -webkit-tap-highlight-color:transparent;overscroll-behavior-y:none;
+  }
+  button{font:inherit;color:inherit}
+  :focus-visible{outline:2px solid var(--on);outline-offset:2px}
+
+  header.top{
+    position:sticky;top:0;z-index:5;
+    padding:calc(env(safe-area-inset-top) + 16px) var(--gutter) 8px;
+    background:linear-gradient(var(--bg) 75%,rgba(11,13,18,0));
+  }
+  h1{margin:0;font-size:30px;font-weight:700;letter-spacing:-.02em}
+  .subtitle{margin:2px 0 0;color:var(--muted);font-size:13px}
+
+  main{max-width:720px;margin:0 auto;padding:4px var(--gutter) 130px}
+
+  .chips{display:flex;gap:8px;overflow-x:auto;padding:4px 0 16px;scrollbar-width:none}
+  .chips::-webkit-scrollbar{display:none}
+  .chip,.pill{
+    flex:none;border:0;border-radius:999px;padding:8px 14px;
+    background:var(--card2);cursor:pointer;font-weight:500;
+  }
+  .chip.sel{background:var(--text);color:#0b0d12}
+  .pill.danger{color:var(--danger)}
+
+  .room{margin-bottom:28px}
+  .room-h{display:flex;justify-content:space-between;align-items:center;gap:12px;margin:0 2px 12px}
+  .room-h h2{margin:0;font-size:18px;font-weight:650}
+  .room-h p{margin:2px 0 0;color:var(--muted);font-size:13px}
+
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px}
+  .card{
+    position:relative;overflow:hidden;min-height:150px;
+    display:flex;flex-direction:column;justify-content:space-between;gap:14px;
+    background:var(--card);border-radius:var(--radius);padding:14px;
+  }
+  .card::before{
+    content:"";position:absolute;top:-70px;right:-70px;width:180px;height:180px;
+    background:radial-gradient(circle,var(--c) 0%,transparent 68%);
+    opacity:var(--b);transition:opacity .25s,background-color .25s;pointer-events:none;
+  }
+  .card.off::before{opacity:0}
+  .card-main{all:unset;cursor:pointer;display:flex;flex-direction:column;gap:4px;position:relative}
+  .card-main .name{font-weight:600;font-size:16px}
+  .sub{color:var(--muted);font-size:13px}
+  .card-row{display:flex;align-items:center;gap:10px;position:relative}
+  .card.off .sub{color:#5c6578}
+
+  .pwr{
+    flex:none;width:42px;height:42px;border-radius:50%;border:0;cursor:pointer;
+    display:grid;place-items:center;background:var(--card2);color:var(--muted);
+    transition:background .2s,color .2s;
+  }
+  .pwr svg{width:19px;height:19px}
+  .pwr[aria-pressed="true"]{background:var(--on);color:#1a1200}
+
+  /* Range sliders */
+  input[type=range]{
+    -webkit-appearance:none;appearance:none;width:100%;height:30px;margin:0;
+    background:transparent;cursor:pointer;
+  }
+  input[type=range]::-webkit-slider-runnable-track{height:10px;border-radius:10px;background:var(--track)}
+  input[type=range]::-moz-range-track{height:10px;border-radius:10px;background:var(--track)}
+  input[type=range]::-webkit-slider-thumb{
+    -webkit-appearance:none;width:26px;height:26px;margin-top:-8px;border-radius:50%;
+    background:#fff;border:0;box-shadow:0 2px 8px rgba(0,0,0,.45);
+  }
+  input[type=range]::-moz-range-thumb{width:26px;height:26px;border-radius:50%;background:#fff;border:0}
+  input.fill::-webkit-slider-runnable-track{background:linear-gradient(90deg,var(--c) var(--pct),var(--track) var(--pct))}
+  input.fill::-moz-range-progress{height:10px;border-radius:10px;background:var(--c)}
+  .hue-track::-webkit-slider-runnable-track{background:linear-gradient(90deg,#f00,#ff0,#0f0,#0ff,#00f,#f0f,#f00)}
+  .hue-track::-moz-range-track{background:linear-gradient(90deg,#f00,#ff0,#0f0,#0ff,#00f,#f0f,#f00)}
+  .sat-track::-webkit-slider-runnable-track{background:linear-gradient(90deg,hsl(var(--h) 0% 55%),hsl(var(--h) 100% 55%))}
+  .sat-track::-moz-range-track{background:linear-gradient(90deg,hsl(var(--h) 0% 55%),hsl(var(--h) 100% 55%))}
+  .ct-track::-webkit-slider-runnable-track{background:linear-gradient(90deg,#ff9329,#ffe0b5 45%,#cfe0ff)}
+  .ct-track::-moz-range-track{background:linear-gradient(90deg,#ff9329,#ffe0b5 45%,#cfe0ff)}
+
+  /* Effects */
+  .field{margin:0 0 14px}
+  .field label{display:block;color:var(--muted);font-size:13px;margin-bottom:6px}
+  select{
+    width:100%;appearance:none;-webkit-appearance:none;padding:12px 14px;border-radius:14px;
+    background:var(--card);color:var(--text);border:0;font:inherit;
+    background-image:linear-gradient(45deg,transparent 50%,var(--muted) 50%),linear-gradient(135deg,var(--muted) 50%,transparent 50%);
+    background-position:calc(100% - 20px) 55%,calc(100% - 14px) 55%;background-size:6px 6px;background-repeat:no-repeat;
+  }
+  .eff-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px}
+  .eff{
+    height:120px;border:0;border-radius:var(--radius);cursor:pointer;padding:12px;
+    display:flex;align-items:flex-end;text-align:left;font-weight:650;color:#fff;
+    background:var(--e);text-shadow:0 1px 6px rgba(0,0,0,.45);
+    transition:transform .12s;
+  }
+  .eff:active{transform:scale(.97)}
+
+  /* Settings */
+  .panel{background:var(--card);border-radius:var(--radius);padding:16px;margin-bottom:12px}
+  .panel h2{margin:0 0 6px;font-size:16px}
+  .panel p{margin:0 0 12px}
+  .muted{color:var(--muted)}
+  .empty{color:var(--muted);text-align:center;padding:40px 0}
+
+  /* Bottom sheet */
+  #sheet{position:fixed;inset:0;z-index:20}
+  #sheet[hidden]{display:none}
+  .backdrop{position:absolute;inset:0;background:rgba(0,0,0,.55);animation:fade .2s ease}
+  .sheet{
+    position:absolute;left:0;right:0;bottom:0;max-width:720px;margin:0 auto;
+    max-height:90vh;overflow-y:auto;background:var(--card);
+    border-radius:26px 26px 0 0;padding:10px var(--gutter) calc(env(safe-area-inset-bottom) + 28px);
+    animation:up .28s cubic-bezier(.2,.8,.2,1);
+  }
+  .grab{width:40px;height:5px;border-radius:3px;background:#3a4252;margin:0 auto 14px}
+  .sheet-h{display:flex;justify-content:space-between;align-items:center;gap:12px}
+  .sheet-h h3{margin:0;font-size:20px}
+  .sheet-orb{
+    width:124px;height:124px;margin:18px auto 22px;border-radius:50%;
+    background:radial-gradient(circle,var(--c) 0%,transparent 68%);transition:opacity .2s;
+  }
+  .row{display:flex;justify-content:space-between;align-items:center;padding:6px 0 18px}
+  .pwr.big{width:56px;height:56px}
+  .pwr.big svg{width:24px;height:24px}
+  .ctrl{margin-bottom:20px}
+  .lbl{display:flex;justify-content:space-between;color:var(--muted);font-size:13px;margin-bottom:6px}
+  .lbl b{color:var(--text);font-weight:600}
+  .tabs{display:grid;grid-template-columns:1fr 1fr;gap:6px;background:var(--card2);border-radius:14px;padding:4px;margin:4px 0 20px}
+  .tabs button{border:0;background:transparent;border-radius:11px;padding:9px;cursor:pointer;color:var(--muted);font-weight:550}
+  .tabs button.sel{background:var(--track);color:var(--text)}
+
+  /* Bottom nav */
+  nav{
+    position:fixed;left:0;right:0;bottom:0;z-index:10;display:flex;justify-content:center;gap:6px;
+    padding:12px 16px calc(env(safe-area-inset-bottom) + 12px);
+    background:linear-gradient(rgba(11,13,18,0),var(--bg) 40%);
+  }
+  nav button{
+    border:0;cursor:pointer;background:var(--card);color:var(--muted);
+    border-radius:999px;padding:10px 20px;font-weight:600;
+  }
+  nav button[aria-current="page"]{background:var(--text);color:#0b0d12}
+
+  #toast{
+    position:fixed;left:50%;bottom:90px;transform:translate(-50%,20px);opacity:0;z-index:30;
+    background:var(--text);color:#0b0d12;padding:10px 16px;border-radius:999px;font-weight:550;
+    transition:opacity .2s,transform .2s;pointer-events:none;max-width:90vw;text-align:center;
+  }
+  #toast.show{opacity:1;transform:translate(-50%,0)}
+
+  @keyframes fade{from{opacity:0}to{opacity:1}}
+  @keyframes up{from{transform:translateY(40px);opacity:.4}to{transform:none;opacity:1}}
+  @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+
+<header class="top">
+  <h1 id="title">Lights</h1>
+  <p class="subtitle" id="subtitle"></p>
+</header>
+
+<main id="main" aria-live="polite"></main>
+
+<div id="sheet" hidden></div>
+<div id="toast" role="status"></div>
+
+<nav>
+  <button data-nav="home" aria-current="page">Lights</button>
+  <button data-nav="effects" aria-current="false">Effects</button>
+  <button data-nav="settings" aria-current="false">Settings</button>
+</nav>
+
+<script>
+/* ============================================================
+   DEVICE LAYER
+   The UI only talks to the lights through `adapter.setLight`.
+   Demo mode keeps state in this browser. To control real lights,
+   replace `adapter` with one that calls your Govi/Tuya API (or
+   local network control) - nothing else in the UI has to change.
+   ============================================================ */
+const DEMO_KEY = 'lights-app-demo-v1';
+
+const Demo = {
+  load() {
+    try {
+      const s = JSON.parse(localStorage.getItem(DEMO_KEY));
+      if (s && s.lights) return s;
+    } catch (e) { /* storage blocked or corrupt - fall back to seed */ }
+    return seedState();
+  },
+  save(state) {
+    try { localStorage.setItem(DEMO_KEY, JSON.stringify(state)); } catch (e) { /* ignore */ }
+  },
+  clear() {
+    try { localStorage.removeItem(DEMO_KEY); } catch (e) { /* ignore */ }
+  }
+};
+
+const adapter = {
+  // patch can contain: on, brightness (1-100), mode ('color'|'white'),
+  // hue (0-359), sat (0-100), ct (2200-6500), effect (id or null)
+  async setLight(id, patch) {
+    Demo.save(S);
+  }
+};
+
+function seedState() {
+  const lights = {};
+  const add = (id, name, room, hue, sat, brightness, on = true) => {
+    lights[id] = { id, name, room, on, brightness, mode: 'color', hue, sat, ct: 4000, effect: null };
+  };
+  add('l1', 'Floor lamp', 'lounge', 35, 70, 80);
+  add('l2', 'TV backlight', 'lounge', 260, 80, 60);
+  add('l3', 'Ceiling', 'lounge', 45, 0, 90);
+  lights.l3.mode = 'white';
+  add('l4', 'Bedside left', 'bed', 25, 60, 30);
+  add('l5', 'Bedside right', 'bed', 25, 60, 30, false);
+  add('l6', 'Under-cabinet', 'kitchen', 50, 20, 100);
+  return {
+    rooms: [
+      { id: 'lounge', name: 'Living room' },
+      { id: 'bed', name: 'Bedroom' },
+      { id: 'kitchen', name: 'Kitchen' }
+    ],
+    lights,
+    // Placeholder effects. Rename these to match the effects in your Govi app.
+    effects: [
+      { id: 'candle',  name: 'Candle',  hue: 30,   sat: 90 },
+      { id: 'sunset',  name: 'Sunset',  hue: 15,   sat: 85 },
+      { id: 'ocean',   name: 'Ocean',   hue: 200,  sat: 80 },
+      { id: 'aurora',  name: 'Aurora',  hue: 160,  sat: 75 },
+      { id: 'relax',   name: 'Relax',   hue: 40,   sat: 40 },
+      { id: 'party',   name: 'Party',   hue: null, sat: 100 }
+    ]
+  };
+}
+
+/* ============================================================
+   STATE + COMMANDS
+   ============================================================ */
+let S = Demo.load();
+let view = 'home';          // home | effects | settings
+let roomSel = 'all';        // 'all' or room id
+let effectTarget = 'all';   // 'all' or 'room:<id>'
+let sheetId = null;
+
+const pending = {};
+let flushTimer = null;
+
+function change(id, patch) {
+  const l = S.lights[id];
+  if (!l) return;
+  const brightOnly = Object.keys(patch).every(k => k === 'brightness' || k === 'on');
+  Object.assign(l, patch);
+  // Manually changing colour / white / temperature drops any running effect.
+  if (!brightOnly && !('effect' in patch)) l.effect = null;
+  pending[id] = Object.assign(pending[id] || {}, patch);
+  scheduleFlush();
+  paintLight(id);
+}
+
+function scheduleFlush() {
+  clearTimeout(flushTimer);
+  flushTimer = setTimeout(flush, 80); // coalesce slider drags into few writes
+}
+
+async function flush() {
+  const batch = Object.entries(pending);
+  for (const k of Object.keys(pending)) delete pending[k];
+  try {
+    for (const [id, patch] of batch) await adapter.setLight(id, patch);
+  } catch (e) {
+    toast('Could not reach the lights');
+  }
+}
+
+function applyEffect(effId, ids) {
+  const e = S.effects.find(x => x.id === effId);
+  if (!e || !ids.length) return;
+  ids.forEach(id => {
+    const hue = e.hue == null ? Math.round(Math.random() * 359) : e.hue;
+    change(id, { on: true, mode: 'color', hue, sat: e.sat, effect: e.id });
+  });
+  toast(`${e.name} on ${effectTarget === 'all' ? 'all lights' : roomName(effectTarget.slice(5))}`);
+}
+
+/* ============================================================
+   HELPERS
+   ============================================================ */
+const $ = (s, r = document) => r.querySelector(s);
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const POWER_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.5v9.5M6.4 5.9a8 8 0 1 0 11.2 0" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>';
+
+const lightsIn = roomId => Object.values(S.lights).filter(l => l.room === roomId);
+const roomName = id => (S.rooms.find(r => r.id === id) || {}).name || '';
+const targetIds = t => t === 'all' ? Object.keys(S.lights) : lightsIn(t.slice(5)).map(l => l.id);
+const pct = v => ((v - 1) / 99 * 100).toFixed(1);
+
+function colorOf(l) {
+  if (l.mode === 'white') return ctToRgb(l.ct);
+  return `hsl(${l.hue} ${l.sat}% 55%)`;
+}
+function ctToRgb(k) {
+  const t = Math.min(1, Math.max(0, (k - 2200) / 4300));
+  const a = [255, 147, 41], b = [207, 224, 255];
+  return `rgb(${a.map((v, i) => Math.round(v + (b[i] - v) * t)).join(',')})`;
+}
+const opacityOf = l => l.on ? (0.35 + 0.65 * l.brightness / 100).toFixed(2) : '0';
+function subText(l) {
+  if (!l.on) return 'Off';
+  const eff = l.effect && S.effects.find(e => e.id === l.effect);
+  const what = eff ? eff.name : (l.mode === 'white' ? `${l.ct}K` : 'Colour');
+  return `${what} · ${l.brightness}%`;
+}
+function effBg(e) {
+  return e.hue == null
+    ? 'conic-gradient(#f00,#ff0,#0f0,#0ff,#00f,#f0f,#f00)'
+    : `linear-gradient(135deg,hsl(${e.hue} ${e.sat}% 55%),hsl(${(e.hue + 30) % 360} ${e.sat}% 28%))`;
+}
+function setVal(input, v) { if (document.activeElement !== input) input.value = v; }
+
+/* ============================================================
+   RENDERING
+   ============================================================ */
+function cardHTML(l) {
+  return `
+  <div class="card ${l.on ? '' : 'off'}" data-card="${l.id}" style="--c:${colorOf(l)};--b:${opacityOf(l)}">
+    <button class="card-main" data-open="${l.id}" aria-label="Open ${esc(l.name)}">
+      <span class="name">${esc(l.name)}</span>
+      <span class="sub" data-sub>${esc(subText(l))}</span>
+    </button>
+    <div class="card-row">
+      <button class="pwr" data-toggle="${l.id}" data-pwr aria-label="Power ${esc(l.name)}" aria-pressed="${l.on}">${POWER_ICON}</button>
+      <input class="fill" type="range" min="1" max="100" value="${l.brightness}" data-bright="${l.id}"
+             aria-label="Brightness" style="--pct:${pct(l.brightness)}%">
+    </div>
+  </div>`;
+}
+
+function renderHome() {
+  const chips = [{ id: 'all', name: 'All' }, ...S.rooms]
+    .map(r => `<button class="chip ${roomSel === r.id ? 'sel' : ''}" data-room="${r.id}">${esc(r.name)}</button>`)
+    .join('');
+  const sections = S.rooms
+    .filter(r => roomSel === 'all' || roomSel === r.id)
+    .map(r => {
+      const ls = lightsIn(r.id);
+      const onCount = ls.filter(l => l.on).length;
+      return `
+      <section class="room">
+        <div class="room-h">
+          <div><h2>${esc(r.name)}</h2><p>${onCount} of ${ls.length} on</p></div>
+          <button class="pill" data-room-toggle="${r.id}">${onCount ? 'All off' : 'All on'}</button>
+        </div>
+        <div class="grid">${ls.map(cardHTML).join('')}</div>
+      </section>`;
+    }).join('');
+  return `<div class="chips">${chips}</div>${sections || '<p class="empty">No lights yet.</p>'}`;
+}
+
+function renderEffects() {
+  const targets = [{ id: 'all', name: 'All lights' }, ...S.rooms.map(r => ({ id: 'room:' + r.id, name: r.name }))];
+  return `
+  <div class="field">
+    <label for="tgt">Apply to</label>
+    <select id="tgt" data-eff-target>
+      ${targets.map(t => `<option value="${t.id}" ${effectTarget === t.id ? 'selected' : ''}>${esc(t.name)}</option>`).join('')}
+    </select>
+  </div>
+  <div class="eff-grid">
+    ${S.effects.map(e => `<button class="eff" data-effect="${e.id}" style="--e:${effBg(e)}">${esc(e.name)}</button>`).join('')}
+  </div>`;
+}
+
+function renderSettings() {
+  return `
+  <section class="panel">
+    <h2>Connection</h2>
+    <p class="muted">Demo mode. Changes are saved on this device only and are not yet sent to your Govi lights.</p>
+  </section>
+  <section class="panel">
+    <h2>Demo data</h2>
+    <p class="muted">Reset the sample rooms, lights and effects.</p>
+    <button class="pill danger" data-reset>Reset demo</button>
+  </section>`;
+}
+
+function render() {
+  const onCount = Object.values(S.lights).filter(l => l.on).length;
+  $('#subtitle').textContent = `${onCount} of ${Object.keys(S.lights).length} lights on`;
+  $('#main').innerHTML = view === 'home' ? renderHome() : view === 'effects' ? renderEffects() : renderSettings();
+  document.querySelectorAll('[data-nav]').forEach(b => b.setAttribute('aria-current', b.dataset.nav === view ? 'page' : 'false'));
+}
+
+// Update one light in place. Never rebuilds elements, so a slider under the finger keeps dragging.
+function paintLight(id) {
+  const l = S.lights[id];
+  document.querySelectorAll(`[data-card="${id}"]`).forEach(el => {
+    el.classList.toggle('off', !l.on);
+    el.style.setProperty('--c', colorOf(l));
+    el.style.setProperty('--b', opacityOf(l));
+    el.querySelector('[data-sub]').textContent = subText(l);
+    el.querySelector('[data-pwr]').setAttribute('aria-pressed', l.on);
+    const s = el.querySelector('[data-bright]');
+    setVal(s, l.brightness);
+    s.style.setProperty('--pct', pct(l.brightness) + '%');
+  });
+  if (sheetId === id) paintSheet();
+}
+
+function openSheet(id) {
+  sheetId = id;
+  const l = S.lights[id];
+  $('#sheet').innerHTML = `
+  <div class="backdrop" data-close></div>
+  <div class="sheet" role="dialog" aria-modal="true" aria-label="${esc(l.name)}">
+    <div class="grab"></div>
+    <div class="sheet-h">
+      <div><h3>${esc(l.name)}</h3><p class="sub" style="margin:2px 0 0">${esc(roomName(l.room))}</p></div>
+      <button class="pill" data-close>Done</button>
+    </div>
+    <div class="sheet-orb" data-s="orb"></div>
+
+    <div class="row">
+      <span>Power</span>
+      <button class="pwr big" data-toggle="${id}" data-pwr aria-label="Power" aria-pressed="${l.on}">${POWER_ICON}</button>
+    </div>
+
+    <div class="ctrl">
+      <div class="lbl"><span>Brightness</span><b data-s="bval"></b></div>
+      <input class="fill" type="range" min="1" max="100" data-bright="${id}" data-s="bright" aria-label="Brightness">
+    </div>
+
+    <div class="tabs" role="tablist">
+      <button role="tab" data-mode="color" data-s="tab-color">Colour</button>
+      <button role="tab" data-mode="white" data-s="tab-white">White</button>
+    </div>
+
+    <div data-s="panel-color">
+      <div class="ctrl">
+        <div class="lbl"><span>Hue</span></div>
+        <input class="hue-track" type="range" min="0" max="359" data-hue="${id}" data-s="hue" aria-label="Hue">
+      </div>
+      <div class="ctrl">
+        <div class="lbl"><span>Saturation</span></div>
+        <input class="sat-track" type="range" min="0" max="100" data-sat="${id}" data-s="sat" aria-label="Saturation">
+      </div>
+    </div>
+
+    <div data-s="panel-white">
+      <div class="ctrl">
+        <div class="lbl"><span>Temperature</span><b data-s="ctval"></b></div>
+        <input class="ct-track" type="range" min="2200" max="6500" step="50" data-ct="${id}" data-s="ct" aria-label="Colour temperature">
+      </div>
+    </div>
+  </div>`;
+  $('#sheet').hidden = false;
+  paintSheet();
+}
+
+function paintSheet() {
+  const el = $('#sheet .sheet');
+  if (!el || sheetId == null) return;
+  const l = S.lights[sheetId];
+  const q = s => el.querySelector(`[data-s="${s}"]`);
+
+  el.style.setProperty('--h', l.hue);
+  el.style.setProperty('--c', colorOf(l));
+  const orb = q('orb');
+  orb.style.setProperty('--c', colorOf(l));
+  orb.style.opacity = l.on ? opacityOf(l) : '0.25';
+
+  q('bval').textContent = l.on ? l.brightness + '%' : 'Off';
+  setVal(q('bright'), l.brightness);
+  q('bright').style.setProperty('--pct', pct(l.brightness) + '%');
+  el.querySelector('[data-pwr]').setAttribute('aria-pressed', l.on);
+
+  setVal(q('hue'), l.hue);
+  setVal(q('sat'), l.sat);
+  setVal(q('ct'), l.ct);
+  q('ctval').textContent = l.ct + 'K';
+
+  q('tab-color').classList.toggle('sel', l.mode === 'color');
+  q('tab-white').classList.toggle('sel', l.mode === 'white');
+  q('tab-color').setAttribute('aria-selected', l.mode === 'color');
+  q('tab-white').setAttribute('aria-selected', l.mode === 'white');
+  q('panel-color').hidden = l.mode !== 'color';
+  q('panel-white').hidden = l.mode !== 'white';
+}
+
+function closeSheet() {
+  sheetId = null;
+  $('#sheet').hidden = true;
+  $('#sheet').innerHTML = '';
+}
+
+let toastT;
+function toast(msg) {
+  const t = $('#toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(toastT);
+  toastT = setTimeout(() => t.classList.remove('show'), 1800);
+}
+
+/* ============================================================
+   EVENTS
+   ============================================================ */
+document.addEventListener('click', e => {
+  const el = e.target.closest('button,[data-close]');
+  if (!el) return;
+  const d = el.dataset;
+
+  if (d.nav) { view = d.nav; closeSheet(); render(); }
+  else if (d.room !== undefined) { roomSel = d.room; render(); }
+  else if (d.roomToggle !== undefined) {
+    const ls = lightsIn(d.roomToggle);
+    const anyOn = ls.some(l => l.on);
+    ls.forEach(l => change(l.id, { on: !anyOn }));
+    render();
+  }
+  else if (d.toggle !== undefined) {
+    const l = S.lights[d.toggle];
+    change(d.toggle, { on: !l.on });
+    if (view === 'home') render();
+  }
+  else if (d.open !== undefined) openSheet(d.open);
+  else if (d.close !== undefined) closeSheet();
+  else if (d.effect !== undefined) applyEffect(d.effect, targetIds(effectTarget));
+  else if (d.mode !== undefined && sheetId) change(sheetId, { mode: d.mode });
+  else if (d.reset !== undefined) {
+    Demo.clear();
+    S = seedState();
+    Demo.save(S);
+    closeSheet();
+    render();
+    toast('Demo reset');
+  }
+});
+
+document.addEventListener('input', e => {
+  const t = e.target;
+  if (t.dataset.bright) change(t.dataset.bright, { brightness: +t.value, on: true });
+  else if (t.dataset.hue) change(t.dataset.hue, { mode: 'color', hue: +t.value });
+  else if (t.dataset.sat) change(t.dataset.sat, { mode: 'color', sat: +t.value });
+  else if (t.dataset.ct) change(t.dataset.ct, { mode: 'white', ct: +t.value });
+});
+
+document.addEventListener('change', e => {
+  if (e.target.matches('[data-eff-target]')) effectTarget = e.target.value;
+});
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && sheetId) closeSheet();
+});
+
+render();
+</script>
+</body>
+</html>
